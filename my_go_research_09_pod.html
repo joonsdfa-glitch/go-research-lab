@@ -1,0 +1,2573 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Go Research Lab v0.8</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
+
+        :root {
+            --bg:     #111416; --panel:  #1c1f23; --border: #2e3338;
+            --accent: #f0c040; --cyan:   #00e5ff; --dim:    #555;
+            --win-b:  #64dd17; --win-w:  #ff6e40;
+            --c1: #00e5ff; --c2: #ffca28;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background: var(--bg); color: #ddd;
+            display: flex; flex-direction: column; align-items: center;
+            padding: 18px 14px 40px; min-height: 100vh;
+        }
+        header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; }
+        header h1 { font-family: 'JetBrains Mono',monospace; font-size:1.3rem; color:var(--accent); letter-spacing:.06em; }
+        header span { font-family: 'JetBrains Mono',monospace; font-size:.68rem; color:var(--dim); }
+
+        .workspace { display: flex; gap: 16px; align-items: flex-start; }
+        #canvas { cursor: cell; border-radius: 4px; flex-shrink: 0; box-shadow: 0 8px 40px rgba(0,0,0,.6); }
+        #canvas.region-drag { cursor: crosshair; }
+
+        .sidebar { width: 248px; display: flex; flex-direction: column; gap: 9px; }
+        .panel { background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:12px; }
+        .ptitle { font-family:'JetBrains Mono',monospace; font-size:.58rem; text-transform:uppercase; letter-spacing:.14em; color:var(--dim); margin-bottom:8px; }
+
+        /* 차례 + 네비 */
+        .turn-row { display:flex; align-items:center; gap:6px; }
+        #turn-stone { width:16px;height:16px;border-radius:50%;background:#111;border:1px solid #555;flex-shrink:0; }
+        #turn-stone.white { background:#f0f0f0; }
+        #turn-text { font-weight:700; font-size:.9rem; flex:1; }
+        .nav-btns { display:flex; gap:3px; }
+        .nav-btn {
+            width:26px;height:26px;border:1px solid var(--border);border-radius:3px;
+            background:#1a1e22;color:#aaa;font-size:.82rem;cursor:pointer;
+            display:flex;align-items:center;justify-content:center;transition:background .1s,color .1s;
+        }
+        .nav-btn:hover { background:#2e353c;color:#fff; }
+        .nav-btn:disabled { opacity:.3;cursor:default; }
+        #move-counter { font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--dim);text-align:center;margin-top:4px; }
+
+        /* 돌 색 선택 */
+        .stone-picker { display:flex; gap:4px; }
+        .stone-opt {
+            flex:1;padding:6px 0;text-align:center;border:1px solid var(--border);border-radius:4px;
+            background:#1a1e22;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:.68rem;
+            cursor:pointer;transition:all .12s;
+        }
+        .stone-opt:hover { background:#252a2e;color:#ccc; }
+        .stone-opt.auto-active  { border-color:var(--accent);color:var(--accent);background:#2a2600;font-weight:700; }
+        .stone-opt.black-active { border-color:#888;color:#fff;background:#2a2a2a;font-weight:700; }
+        .stone-opt.white-active { border-color:#999;color:#111;background:#ddd;font-weight:700; }
+
+        /* 버튼 */
+        .btn {
+            width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:4px;
+            background:#252a2e;color:#ccc;font-family:'Noto Sans KR',sans-serif;font-size:.78rem;
+            cursor:pointer;text-align:left;transition:background .12s,color .12s;
+        }
+        .btn:hover   { background:#2e353c;color:#fff;border-color:#444; }
+        .btn.active  { background:var(--accent);color:#000;border-color:var(--accent);font-weight:700; }
+        .btn.primary { background:#0277bd;border-color:#0288d1;color:#fff; }
+        .btn.primary:hover { background:#0288d1; }
+        .btn.danger  { background:#6e1a1a;border-color:#8b2020;color:#ff8a80; }
+        .btn.danger:hover  { background:#8b2020; }
+        .btn.green   { background:#1b4d1b;border-color:#2e7d32;color:#a5d6a7; }
+        .btn.green:hover   { background:#2e7d32;color:#fff; }
+        .btn.purple  { background:#2e1040;border-color:#7b1fa2;color:#ce93d8; }
+        .btn.purple:hover  { background:#4a1060;color:#fff; }
+        .btn.purple.active { background:#7b1fa2;border-color:#ce93d8;color:#fff; }
+        .btn.realtime-on   { background:#7b1fa2;border-color:#9c27b0;color:#fff;animation:pulse-border 1.8s ease-in-out infinite; }
+        @keyframes pulse-border {
+            0%,100%{ border-color:#9c27b0;box-shadow:0 0 0 0 rgba(156,39,176,0); }
+            50%    { border-color:#ce93d8;box-shadow:0 0 0 4px rgba(156,39,176,.22); }
+        }
+
+        #ai-status { font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--cyan);min-height:1em;text-align:center; }
+
+        .speed-group { display:flex;gap:4px;width:100%; }
+        .speed-btn {
+            flex:1;padding:5px 0;text-align:center;border:1px solid var(--border);border-radius:4px;
+            background:#1a1e22;color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:.65rem;
+            cursor:pointer;transition:all .12s;
+        }
+        .speed-btn:hover { background:#252a2e;color:#ccc; }
+        .speed-btn.active { background:#1a3a4a;border-color:var(--cyan);color:var(--cyan);font-weight:700; }
+
+        .cand-list { display:flex;flex-direction:column;gap:4px; }
+        .cand-item {
+            display:grid;grid-template-columns:20px 1fr auto;grid-template-rows:auto 3px;
+            column-gap:6px;row-gap:3px;padding:5px 7px;border-radius:4px;
+            background:#1a1e22;border:1px solid #252a2e;
+            font-family:'JetBrains Mono',monospace;font-size:.74rem;cursor:pointer;
+            transition:background .1s,border-color .1s;
+        }
+        .cand-item:hover, .cand-item.pv-active { background:#162030;border-color:var(--cyan); }
+        .cand-badge { width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.58rem;font-weight:700;color:#000; }
+        .cand-move { color:#e0e0e0;align-self:center; }
+        .cand-wr   { color:var(--accent);font-size:.68rem;align-self:center;white-space:nowrap; }
+        .cand-bar-bg { grid-column:1/-1;height:3px;background:#2a2e33;border-radius:2px;overflow:hidden; }
+        .cand-bar  { height:100%;border-radius:2px;transition:width .3s; }
+
+        #chart-canvas { width:100%;height:90px;display:block; }
+        .no-data { font-family:'JetBrains Mono',monospace;font-size:.66rem;color:var(--dim);text-align:center;padding:8px 0; }
+        .spinner {
+            display:inline-block;width:9px;height:9px;
+            border:2px solid rgba(0,229,255,.3);border-top-color:var(--cyan);
+            border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px;
+        }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        #sgf-drop-zone.drag-over {
+            border-color: var(--cyan);
+            background: rgba(0,229,255,0.05);
+        }
+        #sgf-drop-zone:hover {
+            border-color: #444;
+            background: rgba(255,255,255,0.02);
+        }
+    </style>
+</head>
+<body>
+<header>
+    <h1>⬡ Go Research Lab</h1>
+    <span>v0.9 · game · research · pv-chain</span>
+</header>
+
+<div class="workspace">
+    <div style="position:relative;flex-shrink:0;">
+        <canvas id="canvas" width="600" height="600"></canvas>
+        <!-- 계가 동의/거부 버튼 오버레이 -->
+        <div id="score-overlay-btns" style="display:none;position:absolute;pointer-events:auto;">
+            <button onclick="confirmScore(true)"
+                style="background:#1b4d1b;border:1px solid #2e7d32;color:#a5d6a7;font-family:'JetBrains Mono',monospace;font-size:.78rem;padding:7px 18px;border-radius:5px;cursor:pointer;">
+                ✓ 동의 (대국 종료)
+            </button>
+            <button onclick="confirmScore(false)"
+                style="background:#4a1515;border:1px solid #8b2020;color:#ff8a80;font-family:'JetBrains Mono',monospace;font-size:.78rem;padding:7px 18px;border-radius:5px;cursor:pointer;margin-left:8px;">
+                ✗ 거부 (계속 대국)
+            </button>
+        </div>
+    </div>
+
+    <div class="sidebar">
+
+        <!-- 모드 전환 탭 -->
+        <div class="panel" style="padding:6px;">
+            <div style="display:flex;gap:4px;">
+                <button class="btn" id="tab-game"     onclick="setAppMode('game')"     style="flex:1;text-align:center;padding:6px 0;font-size:.76rem;">🎮 대국</button>
+                <button class="btn active" id="tab-research" onclick="setAppMode('research')" style="flex:1;text-align:center;padding:6px 0;font-size:.76rem;">🔬 연구</button>
+            </div>
+        </div>
+
+        <!-- 대국 모드 패널 -->
+        <div id="game-panel" style="display:none;flex-direction:column;gap:9px;">
+            <div class="panel">
+                <div class="ptitle">대국 설정</div>
+                <div style="display:flex;flex-direction:column;gap:6px;">
+                    <!-- 흑백 선택 -->
+                    <div class="ptitle" style="margin-bottom:3px;">내 돌 색</div>
+                    <div style="display:flex;gap:4px;margin-bottom:2px;">
+                        <div class="stone-opt black-active" id="game-pick-black" onclick="setPlayerColor(1)" style="flex:1;">● 흑</div>
+                        <div class="stone-opt" id="game-pick-white" onclick="setPlayerColor(2)" style="flex:1;">○ 백</div>
+                    </div>
+                    <!-- AI 강도 -->
+                    <div class="ptitle" style="margin-bottom:3px;">AI 강도</div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="range" id="level-slider" min="1" max="27" value="18"
+                               oninput="setAiLevel(this.value)"
+                               style="flex:1;accent-color:var(--cyan);">
+                        <span id="level-label" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--cyan);min-width:36px;text-align:right;">1급</span>
+                    </div>
+                    <div id="level-desc" style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--dim);text-align:center;margin-bottom:2px;">visits:900</div>
+                    <!-- 덤 설정 -->
+                    <div class="ptitle" style="margin-bottom:3px;">덤 설정</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <button class="btn" id="komi-minus" onclick="adjustKomi(-0.5)" style="width:28px;padding:4px 0;text-align:center;flex-shrink:0;">−</button>
+                        <div style="flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--accent);" id="komi-display">6.5집</div>
+                        <button class="btn" id="komi-plus"  onclick="adjustKomi(+0.5)" style="width:28px;padding:4px 0;text-align:center;flex-shrink:0;">+</button>
+                        <button class="btn" onclick="resetKomi()" style="padding:4px 6px;font-size:.65rem;flex-shrink:0;">초기화</button>
+                    </div>
+                    <div id="komi-desc" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);text-align:center;">백이 흑에게 6.5집 지급 (표준)</div>
+                    <!-- 접바둑 설정 -->
+                    <div class="ptitle" style="margin-bottom:3px;margin-top:2px;">접바둑</div>
+                    <div style="display:flex;gap:3px;flex-wrap:wrap;">
+                        <div class="stone-opt auto-active" id="hc-0" onclick="setHandicap(0)" style="flex:1;min-width:28px;font-size:.65rem;">없음</div>
+                        <div class="stone-opt" id="hc-2" onclick="setHandicap(2)" style="flex:1;min-width:28px;font-size:.65rem;">2점</div>
+                        <div class="stone-opt" id="hc-3" onclick="setHandicap(3)" style="flex:1;min-width:28px;font-size:.65rem;">3점</div>
+                        <div class="stone-opt" id="hc-4" onclick="setHandicap(4)" style="flex:1;min-width:28px;font-size:.65rem;">4점</div>
+                        <div class="stone-opt" id="hc-6" onclick="setHandicap(6)" style="flex:1;min-width:28px;font-size:.65rem;">6점</div>
+                        <div class="stone-opt" id="hc-9" onclick="setHandicap(9)" style="flex:1;min-width:28px;font-size:.65rem;">9점</div>
+                    </div>
+                    <div id="hc-desc" style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);text-align:center;">접바둑 없음</div>
+                    <!-- 무르기 설정 -->
+                    <div class="ptitle" style="margin-bottom:3px;margin-top:2px;">무르기</div>
+                    <div style="display:flex;gap:4px;">
+                        <div class="stone-opt" id="undo-0" onclick="setUndoLimit(0)" style="flex:1;font-size:.65rem;">없음</div>
+                        <div class="stone-opt auto-active" id="undo-3" onclick="setUndoLimit(3)" style="flex:1;font-size:.65rem;">3회</div>
+                        <div class="stone-opt" id="undo-inf" onclick="setUndoLimit(-1)" style="flex:1;font-size:.65rem;">무제한</div>
+                    </div>
+                    <div id="undo-count-wrap" style="display:none;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--accent);text-align:center;">남은 무르기: 3회</div>
+                    <!-- 시작 버튼 -->
+                    <button class="btn green" id="game-start-btn" onclick="startGame()" style="margin-top:2px;">▶ 대국 시작</button>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="ptitle">대국 현황</div>
+                <div id="game-status" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--cyan);min-height:1.4em;text-align:center;">대국 전</div>
+                <!-- 대국 중 버튼 행 -->
+                <div id="game-btns" style="display:none;flex-direction:column;gap:5px;margin-top:8px;">
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn" id="game-hint-btn" onclick="requestHint()" style="flex:1;font-size:.74rem;">💡 힌트</button>
+                        <button class="btn" id="game-undo-btn" onclick="undoMove()" style="flex:1;font-size:.74rem;">↩ 무르기</button>
+                    </div>
+                    <div style="display:flex;gap:4px;">
+                        <button class="btn" id="game-pass-btn" onclick="passMove()" style="flex:1;font-size:.74rem;">◻ 패스</button>
+                        <button class="btn danger" id="game-resign-btn" onclick="resignGame()" style="flex:1;font-size:.74rem;">⚑ 기권</button>
+                    </div>
+                    <button class="btn" id="game-score-btn" onclick="requestScore()" style="font-size:.74rem;border-color:#0288d1;color:#4fc3f7;">🧮 계가 신청</button>
+                    <button class="btn" id="game-chart-btn" onclick="toggleGameChart()" style="font-size:.74rem;">📈 승률그래프: OFF</button>
+                </div>
+                <!-- 승률 바 -->
+                <div id="game-wr-wrap" style="display:none;margin-top:8px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                        <span id="game-wr-black" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--win-b);font-weight:700;">50%</span>
+                        <span id="game-score-label" style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#aaa;">-</span>
+                        <span id="game-wr-white" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--win-w);font-weight:700;">50%</span>
+                    </div>
+                    <div style="width:100%;height:10px;border-radius:5px;overflow:hidden;display:flex;">
+                        <div id="game-bar-black" style="height:100%;background:var(--win-b);transition:width .4s;width:50%;"></div>
+                        <div id="game-bar-white" style="height:100%;background:var(--win-w);transition:width .4s;width:50%;"></div>
+                    </div>
+                </div>
+                <!-- 승률 차트 (대국 모드) -->
+                <div id="game-chart-wrap" style="display:none;margin-top:6px;">
+                    <canvas id="game-chart-canvas" style="width:100%;height:80px;display:block;cursor:grab;"></canvas>
+                </div>
+                <!-- 종료 후 버튼 -->
+                <button class="btn purple" id="game-review-btn" onclick="goToReview()" style="display:none;margin-top:8px;">🔬 복기하기</button>
+                <button class="btn green"  id="game-start-btn2" onclick="startGame()" style="display:none;margin-top:4px;font-size:.76rem;">▶ 다시 대국</button>
+                <!-- 형세판단 토글 -->
+                <button class="btn" id="ownership-btn" onclick="toggleOwnership()" style="margin-top:8px;display:none;">🗺 형세판단: OFF</button>
+                <!-- 형세판단 집수 표시 -->
+                <div id="ownership-score" style="display:none;margin-top:8px;background:#151a1e;border:1px solid #2e3338;border-radius:6px;padding:8px 10px;">
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--dim);margin-bottom:6px;">형세판단 (사석 포함)</div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                        <div style="flex:1;text-align:center;">
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#888;margin-bottom:2px;">● 흑</div>
+                            <div id="score-black" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:var(--win-b);font-weight:700;">-</div>
+                        </div>
+                        <div id="score-result" style="font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--accent);text-align:center;min-width:60px;">-</div>
+                        <div style="flex:1;text-align:center;">
+                            <div style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#888;margin-bottom:2px;">○ 백</div>
+                            <div id="score-white" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:var(--win-w);font-weight:700;">-</div>
+                        </div>
+                    </div>
+                    <div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);text-align:center;margin-top:4px;">덤 6.5집 포함</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 연구 모드 패널 (기존) -->
+        <div id="research-panel" style="display:flex;flex-direction:column;gap:9px;">
+        <div class="panel">
+            <div class="ptitle">수순</div>
+            <div class="turn-row">
+                <div id="turn-stone"></div>
+                <span id="turn-text">흑 (Black)</span>
+                <div class="nav-btns">
+                    <button class="nav-btn" id="nav-first" onclick="navFirst()" title="처음으로">⏮</button>
+                    <button class="nav-btn" id="nav-prev"  onclick="navPrev()"  title="한 수 뒤로">◀</button>
+                    <button class="nav-btn" id="nav-next"  onclick="navNext()"  title="한 수 앞으로">▶</button>
+                    <button class="nav-btn" id="nav-last"  onclick="navLast()"  title="마지막으로">⏭</button>
+                </div>
+            </div>
+            <div id="move-counter">0수</div>
+        </div>
+
+        <!-- SGF 불러오기 -->
+        <div class="panel" id="sgf-load-panel">
+            <div class="ptitle">기보 불러오기</div>
+            <!-- 드래그앤드롭 영역 -->
+            <div id="sgf-drop-zone"
+                 ondragover="event.preventDefault();this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleSGFDrop(event)"
+                 onclick="document.getElementById('sgf-file-input').click()"
+                 style="border:2px dashed var(--border);border-radius:6px;padding:14px 8px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--dim);">📂 SGF / GIB 파일 드롭</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:#444;margin-top:3px;">또는 클릭해서 선택</div>
+            </div>
+            <input type="file" id="sgf-file-input" accept=".sgf,.gib" style="display:none" onchange="handleSGFFile(this)">
+            <!-- 기보 메타데이터 표시 -->
+            <div id="sgf-meta" style="display:none;margin-top:8px;background:#151a1e;border:1px solid #2e3338;border-radius:6px;padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:.66rem;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#888;">● 흑</span>
+                    <span id="meta-black" style="color:#ddd;text-align:right;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#888;">○ 백</span>
+                    <span id="meta-white" style="color:#ddd;text-align:right;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">-</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#888;">결과</span>
+                    <span id="meta-result" style="color:var(--accent);">-</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <span style="color:#888;">덤</span>
+                    <span id="meta-komi" style="color:#ddd;">-</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#888;">날짜</span>
+                    <span id="meta-date" style="color:#ddd;">-</span>
+                </div>
+            </div>
+            <!-- 수순 이동 슬라이더 -->
+            <div id="sgf-nav-wrap" style="display:none;margin-top:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--dim);">불러온 기보</span>
+                    <span id="sgf-move-label" style="font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--cyan);">0 / 0수</span>
+                </div>
+                <input type="range" id="sgf-slider" min="0" value="0"
+                       oninput="seekSGF(parseInt(this.value))"
+                       style="width:100%;accent-color:var(--cyan);">
+                <div id="sgf-comment" style="display:none;margin-top:6px;background:#1a1f25;border-left:2px solid var(--cyan);padding:5px 8px;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:#aaa;line-height:1.5;max-height:80px;overflow-y:auto;"></div>
+            </div>
+        </div>
+
+        <!-- 조작 -->
+        <div class="panel">
+            <div class="ptitle">조작</div>
+            <!-- 돌 색 선택 -->
+            <div class="ptitle" style="margin-bottom:5px;">돌 놓기 모드</div>
+            <div class="stone-picker" style="margin-bottom:8px;">
+                <div class="stone-opt" id="pick-black" onclick="setStoneMode('black')">● 흑</div>
+                <div class="stone-opt auto-active" id="pick-auto" onclick="setStoneMode('auto')">⇄ 교대</div>
+                <div class="stone-opt" id="pick-white" onclick="setStoneMode('white')">○ 백</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px;">
+                <button class="btn" id="toggle-num" onclick="toggleNumbers()">수순 표시: OFF</button>
+                <button class="btn green"  id="research-btn" onclick="toggleResearchMode()">🔬 놓아보기 시작</button>
+                <button class="btn" id="branch-reset-btn" onclick="resetToBranch()" style="display:none;background:#1a2a1a;border-color:#2e7d32;color:#a5d6a7;font-size:.75rem;">↩ 연구 전으로 복귀</button>
+                <button class="btn purple" id="region-btn"   onclick="toggleRegionMode()">⬚ 부분 연구 모드: OFF</button>
+                <button class="btn" id="region-reset-btn" onclick="resetRegion()" style="display:none;font-size:.72rem;color:#ce93d8;border-color:#7b1fa2;">↺ 영역 재설정</button>
+                <button class="btn" onclick="saveSGF()">💾 SGF 저장</button>
+                <button class="btn danger" onclick="resetBoard()">✕ 초기화</button>
+            </div>
+        </div>
+
+        <!-- AI 분석 -->
+        <div class="panel">
+            <div class="ptitle">AI 분석 (KataGo)</div>
+            <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px;">
+                <button class="btn primary" id="manual-btn" onclick="requestAI()">▶ 분석 요청</button>
+                <button class="btn" id="realtime-btn" onclick="toggleRealtime()">⚡ 실시간 AI: OFF</button>
+                <div>
+                    <div class="ptitle" style="margin-bottom:4px;">분석 속도</div>
+                    <div class="speed-group">
+                        <div class="speed-btn" id="speed-fast"   onclick="setSpeed('fast')">⚡ 빠름</div>
+                        <div class="speed-btn active" id="speed-normal" onclick="setSpeed('normal')">▶ 보통</div>
+                        <div class="speed-btn" id="speed-deep"   onclick="setSpeed('deep')">🔍 정밀</div>
+                    </div>
+                </div>
+            </div>
+            <div id="ai-status"></div>
+            <div class="ptitle" style="margin-top:9px;">
+                후보 수 <span style="color:#444;font-size:.54rem;font-family:'JetBrains Mono',monospace;">— 우클릭 → pv 수순</span>
+            </div>
+            <div class="cand-list" id="cand-list">
+                <div class="no-data">분석 결과 없음</div>
+            </div>
+            <!-- 연구 모드 형세판단 버튼 -->
+            <button class="btn" id="ownership-btn-research" onclick="toggleOwnership()" style="margin-top:8px;display:none;">🗺 형세판단: OFF</button>
+            <div id="ownership-score-research" style="display:none;margin-top:8px;background:#151a1e;border:1px solid #2e3338;border-radius:6px;padding:8px 10px;">
+                <div style="font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--dim);margin-bottom:6px;">형세판단 (사석 포함)</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                    <div style="flex:1;text-align:center;">
+                        <div style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#888;margin-bottom:2px;">● 흑</div>
+                        <div id="score-black-r" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:var(--win-b);font-weight:700;">-</div>
+                    </div>
+                    <div id="score-result-r" style="font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--accent);text-align:center;min-width:60px;">-</div>
+                    <div style="flex:1;text-align:center;">
+                        <div style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#888;margin-bottom:2px;">○ 백</div>
+                        <div id="score-white-r" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;color:var(--win-w);font-weight:700;">-</div>
+                    </div>
+                </div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);text-align:center;margin-top:4px;">덤 6.5집 포함</div>
+            </div>
+        </div>
+
+        <!-- 승률 -->
+        <div class="panel">
+            <div class="ptitle">승률 흐름</div>
+            <div id="wr-bar-wrap" style="display:none;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <span id="wr-black-pct" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--win-b);font-weight:700;">50%</span>
+                    <span id="wr-score-label" style="font-family:'JetBrains Mono',monospace;font-size:.64rem;color:#aaa;">집차이: -</span>
+                    <span id="wr-white-pct" style="font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--win-w);font-weight:700;">50%</span>
+                </div>
+                <div style="width:100%;height:10px;border-radius:5px;overflow:hidden;display:flex;">
+                    <div id="wr-bar-black" style="height:100%;background:var(--win-b);transition:width .4s;width:50%;"></div>
+                    <div id="wr-bar-white" style="height:100%;background:var(--win-w);transition:width .4s;width:50%;"></div>
+                </div>
+            </div>
+            <canvas id="chart-canvas" style="margin-top:8px;cursor:grab;"></canvas>
+            <div id="chart-ph" class="no-data">AI 분석 후 업데이트</div>
+            <div id="chart-hint" style="display:none;font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--dim);text-align:center;margin-top:2px;">← 드래그로 탐색</div>
+        </div>
+
+<!-- 계가 결과 모달 -->
+<div id="score-modal" style="
+    display:none;position:fixed;inset:0;z-index:999;
+    background:rgba(0,0,0,0.65);
+    align-items:center;justify-content:center;">
+    <div style="
+        background:#1c1f23;border:1px solid #2e3338;border-radius:12px;
+        padding:28px 32px;min-width:300px;max-width:360px;
+        font-family:'JetBrains Mono',monospace;box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+        <div style="text-align:center;font-size:1rem;color:#f0c040;font-weight:700;margin-bottom:16px;letter-spacing:.06em;">
+            🧮 계가 결과
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:.78rem;color:#64dd17;">● 흑</span>
+            <span id="modal-black" style="font-size:1.1rem;color:#64dd17;font-weight:700;">-</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span style="font-size:.78rem;color:#ff6e40;">○ 백</span>
+            <span id="modal-white" style="font-size:1.1rem;color:#ff6e40;font-weight:700;">-</span>
+        </div>
+        <div style="font-size:.6rem;color:#555;text-align:right;margin-bottom:14px;" id="modal-komi-note">덤 6.5집 포함</div>
+        <div style="height:1px;background:#2e3338;margin-bottom:14px;"></div>
+        <div id="modal-result" style="text-align:center;font-size:1.3rem;font-weight:700;margin-bottom:6px;">-</div>
+        <div id="modal-raw" style="text-align:center;font-size:.62rem;color:#555;margin-bottom:6px;">-</div>
+        <div style="text-align:center;font-size:.7rem;color:#888;margin-bottom:18px;">계가 결과에 동의하시겠습니까?</div>
+        <div style="display:flex;gap:8px;">
+            <button onclick="confirmScoreModal(false)" class="btn danger" style="flex:1;text-align:center;">✗ 거부 (계속)</button>
+            <button onclick="confirmScoreModal(true)"  class="btn green"  style="flex:1;text-align:center;">✓ 동의 (종료)</button>
+        </div>
+    </div>
+</div><!-- /score-modal -->
+
+        </div><!-- /research-panel -->
+    </div><!-- /sidebar -->
+</div><!-- /workspace -->
+
+<script>
+/* ================================================================
+   상수
+================================================================ */
+// 여기에 복사한 런팟 주소를 넣으세요 (끝에 /는 빼고, :5000도 빼세요!)
+
+const SERVER_URL = "https://qefelkxykvce57-5000.proxy.runpod.net";
+
+/* ================================================================
+   상수
+================================================================ */
+const SIZE      = 19;
+const PAD       = 34;
+const GTP_COLS  = "abcdefghjklmnopqrst";
+const COL_LABELS= "ABCDEFGHJKLMNOPQRST";
+
+const COLOR_TOP  = '#00e5ff';
+const COLOR_REST = '#ffca28';
+const SPEED_MAP  = { fast:200, normal:400, deep:800 };
+
+// ★ 해상도: devicePixelRatio 적용
+const DPR = window.devicePixelRatio || 1;
+const CANVAS_CSS = 600;                    // CSS 픽셀
+const CANVAS_PX  = CANVAS_CSS * DPR;      // 실제 물리 픽셀
+const CELL = (CANVAS_CSS - PAD * 2) / (SIZE - 1);  // 논리 픽셀 기준
+
+/* ================================================================
+   상태
+================================================================ */
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+// 캔버스 물리 픽셀 설정 (CSS 크기는 유지)
+canvas.width  = CANVAS_PX;
+canvas.height = CANVAS_PX;
+canvas.style.width  = CANVAS_CSS + 'px';
+canvas.style.height = CANVAS_CSS + 'px';
+ctx.scale(DPR, DPR);  // 이후 그리기는 논리 픽셀 기준
+
+let board        = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+let boardHistory = [];
+let moveHistory  = [];
+let futureStack  = [];
+let turn         = 1;
+let stoneMode    = 'auto';
+
+let showNumbers   = false;
+let isResearching = false;
+let researchStart = 0;
+
+let candidates    = [];
+let wrHistory     = [];
+let koPoint       = null;
+
+// ── SGF 불러오기 ────────────────────────────────────────────────────
+let sgfMoves    = [];   // [{color, r, c, comment}] 파싱된 전체 수순
+let sgfLoaded   = false;
+let sgfCurrent  = 0;    // 현재 표시 중인 수 인덱스
+let appMode      = 'research';
+let playerColor  = 1;
+let aiLevel      = 18;
+let gameKomi     = 6.5;
+let gameHandicap = 0;    // 접바둑 돌 수 (0=없음, 2~9)
+let gameActive   = false;
+let aiThinking   = false;
+let passCount    = 0;
+let undoLimit    = 3;
+let undoRemain   = 3;
+let showGameChart = false;
+let scoreResult   = null;  // 계가 결과 {black, white, winner, margin}
+let ownershipData = null;       // 361개 ownership 값 (-1~+1, 흑=+1)
+let showOwnership = false;      // 형세판단 히트맵 표시 여부
+let pvChain          = [];
+let pvCandidates     = [];
+let pvActive         = false;
+let nextResearchNum  = 1;  // 놓아보기 중 다음에 부여할 번호 (pv·착수 공통 카운터)
+
+// ── 연구 분기점 스냅샷 (새로고침 복귀용) ──────────────────────────
+// pv→놓아보기 시작 직전 상태를 저장
+let branchSnapshot = null;  // {board, moveHistory, turn, koPoint}
+
+// 실시간 AI
+let realtimeOn      = false;
+let realtimeTimer   = null;
+let pendingAnalysis = false;
+let isAnalyzing     = false;
+let lzVisits        = 400;
+
+// 부분 연구 모드
+let regionMode  = false;
+let regionDrag  = false;
+let regionStart = null;
+let regionEnd   = null;
+let regionRect  = null;   // {r1,c1,r2,c2} 확정 영역
+
+// 차트 슬라이딩 윈도우
+const CHART_WINDOW = 15;   // 한 화면에 보이는 수 수
+let chartOffset    = 0;    // 왼쪽으로 얼마나 밀렸는지 (0=최신 기준)
+let chartDrag      = false;
+let chartDragStartX= 0;
+let chartDragStartOffset = 0;
+
+/* ================================================================
+   좌표 변환
+================================================================ */
+function gtpToRC(gtp) {
+    gtp = gtp.toLowerCase();
+    return { c: GTP_COLS.indexOf(gtp[0]), r: SIZE - parseInt(gtp.substring(1)) };
+}
+function rcToGTP(r,c){ return GTP_COLS[c].toUpperCase()+(SIZE-r); }
+
+function canvasToRC(ex, ey) {
+    const rect = canvas.getBoundingClientRect();
+    // ★ CSS 픽셀 기준으로 계산 (DPR 스케일링 무시)
+    // rect.width = CANVAS_CSS(600), ex/ey는 뷰포트 픽셀 → 논리 픽셀로 변환
+    const lx = (ex - rect.left) * (CANVAS_CSS / rect.width);
+    const ly = (ey - rect.top)  * (CANVAS_CSS / rect.height);
+    return {
+        r: Math.round((ly - PAD) / CELL),
+        c: Math.round((lx - PAD) / CELL),
+    };
+}
+function clampRC(r,c){ return {r:Math.max(0,Math.min(SIZE-1,r)), c:Math.max(0,Math.min(SIZE-1,c))}; }
+function normalizeRegion(a,b){
+    return {r1:Math.min(a.r,b.r),c1:Math.min(a.c,b.c),r2:Math.max(a.r,b.r),c2:Math.max(a.c,b.c)};
+}
+
+/* ================================================================
+   그리기
+================================================================ */
+function draw() {
+    // ctx.scale(DPR,DPR) 적용 후 → 모든 좌표는 논리(CSS) 픽셀 기준
+    const C = CANVAS_CSS;  // 600
+
+    // 배경
+    ctx.fillStyle = '#c8922a';
+    ctx.fillRect(0, 0, C, C);
+
+    // 나무결
+    for(let i=0;i<5;i++){
+        ctx.beginPath();
+        ctx.moveTo(0, 80+i*110); ctx.lineTo(C, 65+i*110);
+        ctx.strokeStyle='rgba(0,0,0,0.03)'; ctx.lineWidth=10; ctx.stroke();
+    }
+
+    // ★ 바둑판 테두리 (격자 영역만 구분되도록 얇은 테두리)
+    ctx.strokeStyle='rgba(80,50,10,0.4)'; ctx.lineWidth=1;
+    ctx.strokeRect(PAD, PAD, (SIZE-1)*CELL, (SIZE-1)*CELL);
+
+    // 좌표 라벨
+    const labelSize = Math.round(CELL*0.3);
+    ctx.font = `${labelSize}px 'JetBrains Mono',monospace`;
+    ctx.fillStyle = 'rgba(60,30,0,0.65)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for(let i=0;i<SIZE;i++){
+        ctx.fillText(COL_LABELS[i], PAD+i*CELL, PAD-13);
+        ctx.fillText(COL_LABELS[i], PAD+i*CELL, C-PAD+13);
+        ctx.fillText(String(SIZE-i), PAD-13, PAD+i*CELL);
+        ctx.fillText(String(SIZE-i), C-PAD+13, PAD+i*CELL);
+    }
+
+    // ★ 격자 — PAD에서 C-PAD까지만 (경계 밖으로 삐져나오지 않음)
+    ctx.strokeStyle='#5a3a10'; ctx.lineWidth=0.8;
+    for(let i=0;i<SIZE;i++){
+        // 가로선
+        ctx.beginPath(); ctx.moveTo(PAD, PAD+i*CELL); ctx.lineTo(C-PAD, PAD+i*CELL); ctx.stroke();
+        // 세로선
+        ctx.beginPath(); ctx.moveTo(PAD+i*CELL, PAD); ctx.lineTo(PAD+i*CELL, C-PAD); ctx.stroke();
+    }
+
+    // 화점
+    [3,9,15].forEach(r=>[3,9,15].forEach(c=>{
+        ctx.beginPath(); ctx.arc(PAD+c*CELL,PAD+r*CELL,3.5,0,Math.PI*2);
+        ctx.fillStyle='#5a3a10'; ctx.fill();
+    }));
+
+    // 부분 연구 영역
+    const activeRegion = regionRect || (regionMode&&regionStart&&regionEnd ? normalizeRegion(regionStart,regionEnd) : null);
+    if(activeRegion){
+        const x1=PAD+activeRegion.c1*CELL-CELL/2, y1=PAD+activeRegion.r1*CELL-CELL/2;
+        const x2=PAD+activeRegion.c2*CELL+CELL/2, y2=PAD+activeRegion.r2*CELL+CELL/2;
+        ctx.fillStyle='rgba(123,31,162,0.07)';
+        ctx.fillRect(x1,y1,x2-x1,y2-y1);
+        ctx.strokeStyle='#9c27b0'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+        ctx.strokeRect(x1,y1,x2-x1,y2-y1); ctx.setLineDash([]);
+    }
+
+    // 후보수 스팟 — pvActive면 pvCandidates, 아니면 candidates
+    const displayCands = pvActive ? pvCandidates : candidates;
+    if(displayCands.length>0){
+        if(regionRect && !pvActive){
+            const inR  = displayCands.filter(c=>isInRegion(c.move)).slice(0,3);
+            const outR = displayCands.filter(c=>!isInRegion(c.move)).slice(0,3);
+            inR.forEach( (cand,i)=>drawSpot(cand,i,'in',  false));
+            outR.forEach((cand,i)=>drawSpot(cand,i,'out', false));
+        } else {
+            displayCands.slice(0,3).forEach((cand,i)=>drawSpot(cand,i,'normal',false));
+        }
+    }
+
+    // ★ 형세판단 히트맵 (돌 그리기 전 레이어)
+    if(showOwnership && ownershipData && ownershipData.length === SIZE*SIZE){
+        for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+            const val = ownershipData[r*SIZE+c]; // +1=흑, -1=백
+            if(Math.abs(val) < 0.05) continue;
+            const x = PAD+c*CELL, y = PAD+r*CELL;
+            const alpha = Math.min(Math.abs(val) * 0.7, 0.65);
+            const size  = CELL * 0.82;
+            ctx.fillStyle = val > 0
+                ? `rgba(0,0,0,${alpha})`           // 흑 영역
+                : `rgba(255,255,255,${alpha})`;     // 백 영역
+            ctx.fillRect(x - size/2, y - size/2, size, size);
+            // 테두리로 구분감 강화
+            ctx.strokeStyle = val > 0 ? `rgba(0,0,0,0.8)` : `rgba(180,180,180,0.8)`;
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(x - size/2, y - size/2, size, size);
+        }
+    }
+
+    // 돌
+    for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){
+        if(!board[r][c]) continue;
+        const x=PAD+c*CELL, y=PAD+r*CELL;
+        const isBlack=board[r][c]===1;
+        const isLast=moveHistory.length>0&&moveHistory[moveHistory.length-1].r===r&&moveHistory[moveHistory.length-1].c===c;
+        ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=6; ctx.shadowOffsetX=2; ctx.shadowOffsetY=2;
+        const g=ctx.createRadialGradient(x-CELL*.15,y-CELL*.15,CELL*.05,x,y,CELL*.43);
+        if(isBlack){g.addColorStop(0,'#555');g.addColorStop(1,'#111');}
+        else{g.addColorStop(0,'#fff');g.addColorStop(1,'#ccc');}
+        ctx.beginPath(); ctx.arc(x,y,CELL*.44,0,Math.PI*2);
+        ctx.fillStyle=g; ctx.fill();
+        ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+        if(!isBlack){ctx.strokeStyle='#aaa';ctx.lineWidth=0.5;ctx.stroke();}
+        if(isLast&&!showNumbers&&!isResearching&&!pvActive){
+            ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fillStyle='#ff1744'; ctx.fill();
+        }
+        const mIdx=moveHistory.findLastIndex(m=>m.r===r&&m.c===c);
+        const showN=showNumbers||(isResearching&&mIdx>=researchStart);
+        if(showN&&mIdx>=0){
+            const m=moveHistory[mIdx];
+            const num=showNumbers ? mIdx+1 : (m.num ?? mIdx-researchStart+1);
+            ctx.font=`bold ${CELL*.34}px 'JetBrains Mono',monospace`;
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillStyle=isLast?'#ffeb3b':(isBlack?'#ddd':'#333');
+            ctx.fillText(num,x,y);
+        }
+    }
+
+    // ★ pvChain 수순 표시 (돌 위 레이어)
+    if(pvActive && pvChain.length>0){
+        drawPVChain();
+    }
+
+    // ★ 대국 모드: AI 생각 중 오버레이
+    if(appMode === 'game' && aiThinking){
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
+        ctx.fillRect(0, 0, CANVAS_CSS, CANVAS_CSS);
+        ctx.font = `bold 18px 'JetBrains Mono',monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillText('AI 생각 중...', CANVAS_CSS/2, CANVAS_CSS/2);
+    }
+
+    // ★ 계가 결과 오버레이
+    if(scoreResult){
+        const cx2 = CANVAS_CSS/2, cy2 = CANVAS_CSS/2;
+        const bw = 340, bh = scoreResult.pending ? 240 : 195;
+        const bx = cx2 - bw/2, by = cy2 - bh/2;
+
+        ctx.fillStyle = 'rgba(10,14,18,0.95)';
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 12); ctx.fill();
+        ctx.strokeStyle = '#2e3338'; ctx.lineWidth = 1.5; ctx.stroke();
+
+        ctx.font = `600 15px 'JetBrains Mono',monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#f0c040';
+        ctx.fillText(scoreResult.pending ? '🧮 계가 결과 확인' : '🏁 대국 결과', cx2, by+28);
+
+        ctx.strokeStyle = '#2e3338'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx+20, by+46); ctx.lineTo(bx+bw-20, by+46); ctx.stroke();
+
+        ctx.font = `500 13px 'JetBrains Mono',monospace`;
+        ctx.fillStyle = '#64dd17'; ctx.textAlign = 'left';
+        ctx.fillText('● 흑', bx+32, by+68);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${scoreResult.black.toFixed(1)}집`, bx+bw-32, by+68);
+
+        ctx.fillStyle = '#ff6e40'; ctx.textAlign = 'left';
+        ctx.fillText(`○ 백  (덤 ${scoreResult.komi}집 포함)`, bx+32, by+90);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${scoreResult.white.toFixed(1)}집`, bx+bw-32, by+90);
+
+        ctx.beginPath(); ctx.moveTo(bx+20, by+106); ctx.lineTo(bx+bw-20, by+106); ctx.stroke();
+
+        ctx.font = `bold 20px 'JetBrains Mono',monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = scoreResult.winner === 'black' ? '#64dd17' : '#ff6e40';
+        const wText = scoreResult.winner === 'black' ? '흑' : '백';
+        ctx.fillText(`${wText} +${scoreResult.margin.toFixed(1)}집 승`, cx2, by+138);
+
+        if(!scoreResult.pending){
+            ctx.font = `11px 'JetBrains Mono',monospace`;
+            ctx.fillStyle = '#555'; ctx.textAlign = 'center';
+            ctx.fillText('클릭하여 닫기', cx2, by+170);
+        }
+
+        // 동의 버튼은 HTML div로 표시 (updateScoreOverlayBtns 호출)
+        updateScoreOverlayBtns(bx, by, bw, bh);
+    } else {
+        // 오버레이 없으면 버튼 숨김
+        const ob = document.getElementById('score-overlay-btns');
+        if(ob) ob.style.display = 'none';
+    }
+
+    updateNavButtons();
+}
+
+function drawSpot(cand, rank, mode='normal', highlighted=false) {
+    const {r,c}=gtpToRC(cand.move);
+    if(r<0||r>=SIZE||c<0||c>=SIZE) return;
+    const x=PAD+c*CELL, y=PAD+r*CELL;
+
+    // 색상: 영역 내 cyan, 영역 밖 orange, 일반 모드는 기존 규칙
+    let color;
+    if(mode==='in')       color = rank===0?'#00e5ff':'#4dd0e1';   // 영역 내: 1위 진한 파랑, 2~3위 연한 파랑
+    else if(mode==='out') color = rank===0?'#ff9800':'#ffcc80';   // 영역 밖: 1위 주황, 2~3위 연한 주황
+    else                  color = rank===0?COLOR_TOP:COLOR_REST;  // 일반
+
+    const radius=CELL*0.42;
+    const alpha=highlighted?0.97:(rank===0?0.88:0.70);
+
+    ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2);
+    ctx.fillStyle=hexA(color,alpha); ctx.fill();
+
+    ctx.strokeStyle=color;
+    ctx.lineWidth=highlighted?3:(rank===0?2.5:1.5);
+    if(rank===0&&!highlighted){ctx.setLineDash([5,3]); ctx.stroke(); ctx.setLineDash([]);}
+    else ctx.stroke();
+
+    // pv 고정 표시: 테두리 흰색 강조
+    if(highlighted){
+        ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.stroke();
+    }
+
+    ctx.font=`bold 12px 'JetBrains Mono',monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#000';
+    ctx.fillText(cand.winrate.toFixed(0)+'%',x,y);
+}
+
+/* ================================================================
+   pvChain 시스템
+================================================================ */
+
+// pvChain에 후보수 + pv 수순을 추가
+function extendPVChain(cand) {
+    // startNum = 다음 부여할 번호 + 현재 pvChain에 이미 쌓인 수
+    const startNum  = nextResearchNum + pvChain.length;
+    const startTurn = cand._turn != null ? cand._turn : turn;
+
+    // 후보수 자체를 추가
+    pvChain.push({ move: cand.move, isBlack: startTurn===1, num: startNum });
+
+    // pv 수순 추가 (pv[0]=상대응수, pv[1]=내수, ...)
+    (cand.pv||[]).forEach((mv, step) => {
+        const isBlk = step%2===0 ? (startTurn===2) : (startTurn===1);
+        pvChain.push({ move: mv, isBlack: isBlk, num: startNum + step + 1 });
+    });
+}
+
+// pvChain을 바둑판에 그리기
+function drawPVChain() {
+    pvChain.forEach(({move, isBlack, num}) => {
+        const {r,c}=gtpToRC(move);
+        if(r<0||r>=SIZE||c<0||c>=SIZE) return;
+        const x=PAD+c*CELL, y=PAD+r*CELL;
+
+        const radius = CELL*0.41;
+        ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=4; ctx.shadowOffsetX=1; ctx.shadowOffsetY=1;
+        const g=ctx.createRadialGradient(x-CELL*.12,y-CELL*.12,CELL*.03,x,y,radius);
+        if(isBlack){g.addColorStop(0,'#555');g.addColorStop(1,'#111');}
+        else{g.addColorStop(0,'#fff');g.addColorStop(1,'#ccc');}
+        ctx.beginPath(); ctx.arc(x,y,radius,0,Math.PI*2);
+        ctx.fillStyle=g; ctx.fill();
+        ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
+        if(!isBlack){ctx.strokeStyle='#aaa';ctx.lineWidth=0.5;ctx.stroke();}
+
+        ctx.font=`bold ${num<10?12:10}px 'JetBrains Mono',monospace`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle = isBlack?'#fff':'#000';
+        ctx.fillText(num, x, y);
+    });
+}
+
+// pv 모드 진입: 첫 번째 우클릭
+function startPV(cand) {
+    // 놓아보기 ON 상태에서 새 pv 시작 시:
+    // 이전 pvChain이 있으면 board에 자동 반영하고 nextResearchNum 동기화
+    if(isResearching && pvChain.length>0){
+        if(!branchSnapshot){
+            branchSnapshot={
+                board: JSON.parse(JSON.stringify(board)),
+                moveHistory: JSON.parse(JSON.stringify(moveHistory)),
+                turn, koPoint
+            };
+            document.getElementById('branch-reset-btn').style.display='block';
+        }
+        pvChain.forEach(({move, isBlack, num})=>{
+            const {r,c}=gtpToRC(move);
+            if(r<0||r>=SIZE||c<0||c>=SIZE||board[r][c]!==0) return;
+            const color=isBlack?1:2;
+            boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color,r,c}, koPoint});
+            moveHistory.push({color, r, c, num});  // ★ num 태워서 저장
+            board[r][c]=color;
+        });
+        const last=pvChain[pvChain.length-1];
+        turn=last.isBlack?2:1;
+        futureStack=[];
+        // ★ 카운터를 pvChain 마지막 번호 다음으로 동기화
+        nextResearchNum = last.num + 1;
+        updateTurnUI();
+    }
+    pvChain=[];
+    extendPVChain(cand);
+    pvActive=true;
+    updatePVCandidates();
+}
+
+// pv 모드 확장: 이미 pvActive 상태에서 추가 추천수 우클릭
+function extendPV(cand) {
+    extendPVChain(cand);
+    updatePVCandidates();
+}
+
+// pv 모드 해제
+function clearPV(resetNum=true) {
+    pvChain = [];
+    pvCandidates = [];
+    pvActive = false;
+    if(resetNum) nextResearchNum = 1;
+}
+
+// 연구 중 pv만 해제 (nextResearchNum 보존)
+function clearPVKeepOffset() {
+    clearPV(false);
+}
+
+// pvChain 기반으로 서버에 추가 분석 요청
+function updatePVCandidates() {
+    // pvChain의 마지막 수 이후 차례 계산
+    if(pvChain.length===0) return;
+    const lastEntry = pvChain[pvChain.length-1];
+    const nextTurn  = lastEntry.isBlack ? 2 : 1;
+
+    // GTP 수순: 실제 moveHistory + pvChain
+    const gtpMoves = [
+        ...moveHistory.map(m=>[m.color===1?'B':'W', rcToGTP(m.r,m.c)]),
+        ...pvChain.map(e=>[e.isBlack?'B':'W', e.move])
+    ];
+
+    requestPVAnalysis(gtpMoves, nextTurn);
+}
+
+async function requestPVAnalysis(gtpMoves, nextTurn) {
+    const statusEl = document.getElementById('ai-status');
+    statusEl.innerHTML='<span class="spinner"></span>pv 분석 중...';
+
+    try {
+        const res=await fetch(`${SERVER_URL}/analyze`,{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({moves: gtpMoves, lz_visits: lzVisits, region_mode: false})
+        });
+        const data=await res.json();
+        const cands=(data.candidates||[]).slice(0,3).map(c=>({...c, _turn: nextTurn}));
+        pvCandidates = cands;
+        statusEl.textContent=`✅ pv+${pvChain.length}수 분석완료`;
+        renderCandList();
+        draw();
+    } catch(e){
+        statusEl.textContent='⚠ pv 분석 오류';
+    }
+}
+
+function hexA(hex,a){
+    const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+}
+
+/* ================================================================
+   바둑 규칙 엔진
+   - getGroup(r,c,b)     : 연결된 돌 그룹 반환
+   - getLiberties(g,b)   : 그룹의 활로 수 반환
+   - tryPlace(r,c,color) : 착수 시도 → 규칙 위반이면 false,
+                           정상이면 {newBoard, captured, koPoint} 반환
+================================================================ */
+
+function getGroup(r, c, b) {
+    const color = b[r][c];
+    if(!color) return new Set();
+    const group = new Set();
+    const stack = [[r,c]];
+    while(stack.length){
+        const [cr,cc] = stack.pop();
+        const key = cr*SIZE+cc;
+        if(group.has(key)) continue;
+        group.add(key);
+        [[cr-1,cc],[cr+1,cc],[cr,cc-1],[cr,cc+1]].forEach(([nr,nc])=>{
+            if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&b[nr][nc]===color&&!group.has(nr*SIZE+nc))
+                stack.push([nr,nc]);
+        });
+    }
+    return group;
+}
+
+function getLiberties(group, b) {
+    const liberties = new Set();
+    group.forEach(key=>{
+        const r=Math.floor(key/SIZE), c=key%SIZE;
+        [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc])=>{
+            if(nr>=0&&nr<SIZE&&nc>=0&&nc<SIZE&&b[nr][nc]===0)
+                liberties.add(nr*SIZE+nc);
+        });
+    });
+    return liberties;
+}
+
+function tryPlace(r, c, color) {
+    // 이미 돌이 있으면 불가
+    if(board[r][c]!==0) return false;
+
+    // 임시 보드에 돌 놓기
+    const b = board.map(row=>[...row]);
+    b[r][c] = color;
+    const opp = color===1?2:1;
+
+    // 상대 돌 따내기
+    let captured = [];
+    [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].forEach(([nr,nc])=>{
+        if(nr<0||nr>=SIZE||nc<0||nc>=SIZE) return;
+        if(b[nr][nc]!==opp) return;
+        const g = getGroup(nr,nc,b);
+        if(getLiberties(g,b).size===0){
+            g.forEach(key=>{
+                const gr=Math.floor(key/SIZE), gc=key%SIZE;
+                captured.push([gr,gc]);
+                b[gr][gc]=0;
+            });
+        }
+    });
+
+    // 자충수 체크: 착수 후 내 그룹의 활로가 0이면 금지
+    const myGroup = getGroup(r,c,b);
+    if(getLiberties(myGroup,b).size===0){
+        return false;  // 자충수 불가
+    }
+
+    // 패(Ko) 체크: 단순 패 — 상대가 단독으로 1개 잡고 내 착수도 단독이면 이전 보드와 동일한지 확인
+    let newKoPoint = null;
+    if(captured.length===1){
+        const [kr,kc]=captured[0];
+        // 내 착수 그룹도 1개인 경우에만 Ko 가능
+        if(myGroup.size===1){
+            newKoPoint={r:kr,c:kc};  // 다음 수에서 이 자리 착수 금지
+        }
+    }
+
+    // Ko 규칙: 현재 koPoint 위치에 착수하면 금지
+    if(koPoint && koPoint.r===r && koPoint.c===c){
+        return false;
+    }
+
+    return { newBoard: b, captured, koPoint: newKoPoint };
+}
+
+/* ================================================================
+   마우스 이벤트
+================================================================ */
+// ★ click 이벤트 사용: 좌클릭에만 반응, 우클릭 완전 차단
+canvas.addEventListener('click', e => {
+    const {r,c}=canvasToRC(e.clientX,e.clientY);
+    if(r<0||r>=SIZE||c<0||c>=SIZE) return;
+
+    // ── 대국 모드 ──────────────────────────────────────────────────
+    if(appMode === 'game'){
+        if(!gameActive || aiThinking) return;
+        if(turn !== playerColor) return;
+        if(board[r][c] !== 0) return;
+
+        // ★ 대국 중 pv(힌트) 표시 중이면 착수 시 소거
+        if(pvActive) clearPV();
+        candidates = [];
+
+        const result = tryPlace(r, c, turn);
+        if(!result) return;
+
+        passCount = 0;
+        boardHistory.push({board:JSON.parse(JSON.stringify(board)),move:{color:turn,r,c},koPoint});
+        moveHistory.push({color:turn, r, c});
+        board   = result.newBoard;
+        koPoint = result.koPoint;
+        turn    = turn===1?2:1;
+        updateTurnUI(); draw();
+        setGameStatus('AI 생각 중...');
+        requestAIMove();
+        return;
+    }
+
+    // ── 연구 모드 (기존 로직) ──────────────────────────────────────
+    if(regionMode){ if(!regionRect) return; }
+    if(board[r][c]!==0) return;
+
+    // pvActive 상태 처리
+    if(pvActive && pvChain.length>0){
+        if(isResearching){
+            // ── 놓아보기 중: pvChain을 board에 반영하고 그 위에 돌 놓기 ──
+            if(!branchSnapshot){
+                branchSnapshot={board:JSON.parse(JSON.stringify(board)),moveHistory:JSON.parse(JSON.stringify(moveHistory)),turn,koPoint};
+                document.getElementById('branch-reset-btn').style.display='block';
+            }
+            const lastPV = pvChain[pvChain.length-1];
+            pvChain.forEach(({move,isBlack,num})=>{
+                const {r:pr,c:pc}=gtpToRC(move);
+                if(pr<0||pr>=SIZE||pc<0||pc>=SIZE||board[pr][pc]!==0) return;
+                const col=isBlack?1:2;
+                boardHistory.push({board:JSON.parse(JSON.stringify(board)),move:{color:col,r:pr,c:pc},koPoint});
+                moveHistory.push({color:col, r:pr, c:pc, num});
+                board[pr][pc]=col;
+            });
+            turn=lastPV.isBlack?2:1;
+            nextResearchNum = lastPV.num + 1;
+            futureStack=[]; pvChain=[]; pvCandidates=[]; pvActive=false;
+            updateTurnUI();
+            if(board[r][c]!==0){ draw(); if(realtimeOn)triggerRealtime(); return; }
+        } else {
+            // ── 일반 상태: pv 그냥 소거하고 착수 진행 ──
+            clearPV();
+        }
+    }
+
+    const color=stoneMode==='black'?1:stoneMode==='white'?2:turn;
+    const result=tryPlace(r,c,color);
+    if(!result) return;
+
+    if(!branchSnapshot && isResearching){
+        branchSnapshot={board:JSON.parse(JSON.stringify(board)),moveHistory:JSON.parse(JSON.stringify(moveHistory)),turn,koPoint};
+        document.getElementById('branch-reset-btn').style.display='block';
+    }
+
+    boardHistory.push({board:JSON.parse(JSON.stringify(board)),move:{color,r,c},koPoint});
+    futureStack=[];
+    // ★ 놓아보기 중이면 num을 태워서 저장, 아니면 num 없음
+    if(isResearching){
+        moveHistory.push({color, r, c, num: nextResearchNum});
+        nextResearchNum++;
+    } else {
+        moveHistory.push({color, r, c});
+    }
+    board   = result.newBoard;
+    koPoint = result.koPoint;
+
+    if(stoneMode==='auto') turn=turn===1?2:1;
+    updateTurnUI(); draw();
+    if(realtimeOn) triggerRealtime();
+});
+
+// 드래그 시작은 mousedown에서 (영역 선택용)
+canvas.addEventListener('mousedown', e => {
+    if(e.button!==0) return;
+    if(!regionMode||regionRect) return; // 영역 모드 + 미확정 상태에서만
+    const {r,c}=canvasToRC(e.clientX,e.clientY);
+    if(r<0||r>=SIZE||c<0||c>=SIZE) return;
+    regionDrag=true;
+    regionStart={r,c}; regionEnd={r,c};
+    canvas.classList.add('region-drag');
+    draw();
+});
+
+// 우클릭: pvChain 시작/확장/해제
+canvas.addEventListener('contextmenu', e => {
+    e.preventDefault(); e.stopPropagation();
+
+    const {r,c}=canvasToRC(e.clientX,e.clientY);
+
+    // 클릭 위치에서 가장 가까운 후보 찾기
+    const searchList = pvActive ? pvCandidates : candidates;
+    let closest=null, minDist=Infinity;
+    searchList.forEach((cand,idx)=>{
+        const {r:cr,c:cc}=gtpToRC(cand.move);
+        const dist=Math.sqrt((r-cr)**2+(c-cc)**2);
+        if(dist<2.0&&dist<minDist){ minDist=dist; closest=cand; }
+    });
+
+    if(closest===null){
+        // 후보 근처가 아니면 pv 해제 (연구 중이면 번호 보존)
+        branchSnapshot ? clearPVKeepOffset() : clearPV();
+        candidates = candidates.map(c=>c);
+        renderCandList();
+        draw();
+        return;
+    }
+
+    if(!pvActive){
+        // 최초 우클릭: pv 시작
+        startPV(closest);
+    } else {
+        // pvActive 상태에서 추가 우클릭: pv 확장
+        extendPV(closest);
+    }
+
+    renderCandList();
+    draw();
+});
+
+document.addEventListener('mousemove', e => {
+    if(!regionDrag) return;
+    const {r,c}=canvasToRC(e.clientX,e.clientY);
+    const cl=clampRC(r,c);
+    regionEnd={r:cl.r,c:cl.c};
+    draw();
+});
+
+document.addEventListener('mouseup', e => {
+    if(!regionDrag) return;
+    regionDrag=false;
+    canvas.classList.remove('region-drag');
+    if(regionStart&&regionEnd){
+        const rr=normalizeRegion(regionStart,regionEnd);
+        regionRect=(rr.r1===rr.r2&&rr.c1===rr.c2)?null:rr;
+    }
+    draw();
+    if(realtimeOn&&regionRect) triggerRealtime();
+});
+
+/* ================================================================
+   수순 네비게이션
+================================================================ */
+function navPrev(){
+    if(!boardHistory.length) return;
+    const snap=boardHistory.pop();
+    futureStack.push({board:JSON.parse(JSON.stringify(board)), move:moveHistory[moveHistory.length-1], koPoint});
+    board    = snap.board;
+    koPoint  = snap.koPoint ?? null;   // koPoint 복원
+    moveHistory.pop();
+    turn=moveHistory.length===0?1:(moveHistory[moveHistory.length-1].color===1?2:1);
+    candidates=[]; clearPV();
+    updateTurnUI(); draw();
+    if(realtimeOn) triggerRealtime();
+}
+function navNext(){
+    if(!futureStack.length) return;
+    const snap=futureStack.pop();
+    boardHistory.push({board:JSON.parse(JSON.stringify(board)), move:snap.move, koPoint});
+    moveHistory.push(snap.move);
+    board    = snap.board;
+    koPoint  = snap.koPoint ?? null;
+    turn=snap.move.color===1?2:1;
+    candidates=[]; clearPV();
+    updateTurnUI(); draw();
+    if(realtimeOn) triggerRealtime();
+}
+function navFirst(){ while(boardHistory.length) navPrev(); }
+function navLast() { while(futureStack.length)  navNext(); }
+
+function updateNavButtons(){
+    document.getElementById('nav-prev').disabled  = boardHistory.length===0;
+    document.getElementById('nav-first').disabled = boardHistory.length===0;
+    document.getElementById('nav-next').disabled  = futureStack.length===0;
+    document.getElementById('nav-last').disabled  = futureStack.length===0;
+    const total=moveHistory.length+futureStack.length;
+    document.getElementById('move-counter').textContent =
+        total>0?`${moveHistory.length} / ${total}수`:'0수';
+}
+
+/* ================================================================
+   UI 헬퍼
+================================================================ */
+function updateTurnUI(){
+    const s=document.getElementById('turn-stone');
+    const t=document.getElementById('turn-text');
+    if(turn===1){s.className='';s.style.background='#111';t.textContent='흑 (Black)';}
+    else{s.className='white';s.style.background='#f0f0f0';t.textContent='백 (White)';}
+}
+
+function setStoneMode(mode){
+    stoneMode=mode;
+    ['black','auto','white'].forEach(k=>{
+        const el=document.getElementById(`pick-${k}`);
+        el.className='stone-opt'+(k===mode?` ${k}-active`:'');
+    });
+}
+
+function toggleNumbers(){
+    showNumbers=!showNumbers;
+    const btn=document.getElementById('toggle-num');
+    btn.textContent=`수순 표시: ${showNumbers?'ON':'OFF'}`;
+    btn.classList.toggle('active',showNumbers);
+    draw();
+}
+
+function toggleResearchMode(){
+    if(!isResearching || (pvActive && pvChain.length>0)){
+        // ── 놓아보기 시작 ──────────────────────────────────────────
+        if(!branchSnapshot){
+            branchSnapshot = {
+                board:       JSON.parse(JSON.stringify(board)),
+                moveHistory: JSON.parse(JSON.stringify(moveHistory)),
+                turn:        turn,
+                koPoint:     koPoint,
+            };
+            document.getElementById('branch-reset-btn').style.display='block';
+            nextResearchNum = 1;  // ★ 최초 놓아보기 시작 시 번호 1부터
+        }
+
+        // pvActive 상태면 pvChain 돌들을 board에 실제로 반영
+        if(pvActive && pvChain.length>0){
+            pvChain.forEach(({move, isBlack, num})=>{
+                const {r,c}=gtpToRC(move);
+                if(r<0||r>=SIZE||c<0||c>=SIZE||board[r][c]!==0) return;
+                const color=isBlack?1:2;
+                boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color,r,c}, koPoint});
+                moveHistory.push({color, r, c, num});  // ★ num 태워서 저장
+                board[r][c]=color;
+            });
+            const last=pvChain[pvChain.length-1];
+            turn=last.isBlack?2:1;
+            futureStack=[];
+            // ★ 카운터를 pvChain 마지막 번호 다음으로 동기화
+            nextResearchNum = last.num + 1;
+            pvChain=[]; pvCandidates=[]; pvActive=false;
+            updateTurnUI();
+        }
+
+        isResearching=true;
+        researchStart=moveHistory.length;
+
+    } else {
+        // ── 놓아보기 종료 → 처음 대국 상태로 복원 ────────────────
+        if(branchSnapshot){
+            board       = branchSnapshot.board;
+            moveHistory = branchSnapshot.moveHistory;
+            turn        = branchSnapshot.turn;
+            koPoint     = branchSnapshot.koPoint;
+            boardHistory=[]; futureStack=[];
+            branchSnapshot=null;
+            document.getElementById('branch-reset-btn').style.display='none';
+        }
+        isResearching=false;
+        researchStart=0;
+        nextResearchNum=1;
+        candidates=[]; clearPV();
+        updateTurnUI(); renderCandList();
+    }
+
+    const btn=document.getElementById('research-btn');
+    btn.textContent=isResearching?'🔬 놓아보기 종료':'🔬 놓아보기 시작';
+    btn.classList.toggle('active',isResearching);
+    draw();
+    if(realtimeOn) triggerRealtime();
+}
+
+function toggleRegionMode(){
+    regionMode=!regionMode;
+    if(!regionMode){
+        regionRect=null; regionStart=null; regionEnd=null; regionDrag=false;
+        canvas.classList.remove('region-drag');
+    }
+    const btn=document.getElementById('region-btn');
+    btn.textContent=`⬚ 부분 연구 모드: ${regionMode?'ON':'OFF'}`;
+    btn.classList.toggle('active',regionMode);
+    // 영역 재설정 버튼 표시
+    document.getElementById('region-reset-btn').style.display=regionMode?'block':'none';
+    draw();
+}
+
+function resetRegion(){
+    regionRect=null; regionStart=null; regionEnd=null; regionDrag=false;
+    canvas.classList.remove('region-drag');
+    draw();
+}
+
+// 분기점 복귀: pv 연구 이전 대국 상황으로 돌아가기
+function resetToBranch(){
+    if(!branchSnapshot) return;
+    board       = branchSnapshot.board;
+    moveHistory = branchSnapshot.moveHistory;
+    turn        = branchSnapshot.turn;
+    koPoint     = branchSnapshot.koPoint;
+    boardHistory=[];
+    futureStack=[];
+    isResearching=false;
+    researchStart=0;
+    nextResearchNum=1;
+    candidates=[]; clearPV();
+    branchSnapshot=null;
+    document.getElementById('branch-reset-btn').style.display='none';
+    document.getElementById('research-btn').textContent='🔬 놓아보기 시작';
+    document.getElementById('research-btn').classList.remove('active');
+    updateTurnUI(); renderCandList(); draw();
+    if(realtimeOn) triggerRealtime();
+}
+
+function setSpeed(level){
+    lzVisits=SPEED_MAP[level];
+    ['fast','normal','deep'].forEach(k=>document.getElementById(`speed-${k}`).classList.toggle('active',k===level));
+}
+
+function saveSGF(){
+    let sgf='(;FF[4]GM[1]SZ[19]';
+    moveHistory.forEach(m=>{sgf+=`;${m.color===1?'B':'W'}[${String.fromCharCode(97+m.c)}${String.fromCharCode(97+m.r)}]`;});
+    sgf+=')';
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([sgf],{type:'text/plain'}));
+    a.download='game.sgf'; a.click();
+}
+
+function resetBoard(){
+    branchSnapshot=null;
+    location.reload();
+}
+
+/* ================================================================
+   실시간 AI
+================================================================ */
+function toggleRealtime(){
+    realtimeOn=!realtimeOn;
+    const btn=document.getElementById('realtime-btn');
+    const man=document.getElementById('manual-btn');
+    if(realtimeOn){
+        btn.textContent='⚡ 실시간 AI: ON'; btn.classList.add('realtime-on');
+        man.disabled=true; man.style.opacity='0.4';
+        triggerRealtime();
+    } else {
+        btn.textContent='⚡ 실시간 AI: OFF'; btn.classList.remove('realtime-on');
+        man.disabled=false; man.style.opacity='1';
+        document.getElementById('ai-status').textContent='';
+        // ★ 실시간 AI off → pv 해제 (연구 중이면 번호 보존)
+        branchSnapshot ? clearPVKeepOffset() : clearPV();
+        renderCandList(); draw();
+    }
+}
+
+function triggerRealtime(){
+    clearTimeout(realtimeTimer);
+    if(isAnalyzing){ pendingAnalysis=true; }
+    else realtimeTimer=setTimeout(()=>requestAI(true),300);
+}
+
+/* ================================================================
+   AI 분석
+================================================================ */
+async function requestAI(silent=false, pvMode=false){
+    if(isAnalyzing){ if(!silent) return; }
+    isAnalyzing=true; pendingAnalysis=false;
+
+    const snapshotLen=moveHistory.length, snapshotTurn=turn;
+    document.getElementById('ai-status').innerHTML='<span class="spinner"></span>분석 중...';
+
+    const gtpMoves=moveHistory.filter(m=>!m.isPass).map(m=>[m.color===1?'B':'W',rcToGTP(m.r,m.c)]);
+    const analysisTurn = snapshotTurn;
+
+    // 영역 좌표를 GTP 형식으로 변환해서 서버에 전달
+    let regionPayload = null;
+    if(regionMode && regionRect){
+        regionPayload = {
+            r1: regionRect.r1, c1: regionRect.c1,
+            r2: regionRect.r2, c2: regionRect.c2
+        };
+    }
+    const payload={ moves:gtpMoves, lz_visits:lzVisits, region_mode: !!regionPayload, region: regionPayload };
+
+    try{
+        const res=await fetch(`${SERVER_URL}/analyze`,{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+        });
+        const data=await res.json();
+        if(moveHistory.length!==snapshotLen){ isAnalyzing=false; if(realtimeOn)triggerRealtime(); return; }
+
+        // 부분 연구 모드: 서버가 영역 내 후보를 보장해서 반환
+        let cands=data.candidates||[];
+        if(regionRect){
+            const inR  = (data.in_region_candidates || cands.filter(c=>isInRegion(c.move))).slice(0,3);
+            const outR = cands.filter(c=>!isInRegion(c.move)).slice(0,3);
+            cands=[...inR,...outR];
+        }
+        candidates=cands.map(c=>({...c, _turn: analysisTurn}));
+        if(!pvActive) pvCandidates=[];
+
+        const blackWr=(analysisTurn===1)?data.winrate:(100-data.winrate);
+        const scoreLead=data.score_lead_black??null;
+        const inRegionCands = regionRect ? cands.filter(c=>isInRegion(c.move)) : [];
+        const regionWr = inRegionCands.length>0
+            ? (snapshotTurn===1 ? inRegionCands[0].winrate : 100-inRegionCands[0].winrate)
+            : null;
+        wrHistory.push({moveNum:snapshotLen, blackWr, scoreLead, regionWr});
+        chartOffset = 0;
+
+        // ★ ownership 처리 (형세판단)
+        if(data.ownership && data.ownership.length === SIZE*SIZE){
+            ownershipData = data.ownership;
+            document.getElementById('ownership-btn-research').style.display = 'block';
+            if(showOwnership) updateOwnershipScore();
+        }
+
+        const slText=scoreLead!==null?`  (${scoreLead>0?'+':''}${scoreLead}집)`:'';
+        document.getElementById('ai-status').textContent=`✅ ${data.best_move}  ${data.winrate}%${slText}`;
+
+        renderCandList();
+        updateWinrateBar(blackWr,scoreLead);
+        drawWinrateChart();
+        draw();
+    }catch(e){
+        if(!silent) alert('❌ 서버 연결 실패! (localhost:5000 확인)');
+        document.getElementById('ai-status').textContent=realtimeOn?'⚠ 연결 대기 중...':'연결 오류';
+    }finally{
+        isAnalyzing=false;
+        if(pendingAnalysis&&realtimeOn){ pendingAnalysis=false; realtimeTimer=setTimeout(()=>requestAI(true),100); }
+    }
+}
+
+function isInRegion(move){
+    if(!regionRect) return true;
+    const {r,c}=gtpToRC(move);
+    return r>=regionRect.r1&&r<=regionRect.r2&&c>=regionRect.c1&&c<=regionRect.c2;
+}
+
+/* ── 후보 수 목록 ────────────────────────────────────────────────── */
+function renderCandList(){
+    const list=document.getElementById('cand-list');
+    const displayCands = pvActive ? pvCandidates : candidates;
+
+    if(!displayCands.length){
+        list.innerHTML=`<div class="no-data">${pvActive?'pv 분석 중...':'분석 결과 없음'}</div>`;
+        return;
+    }
+    const maxV=displayCands[0].visits||1;
+
+    // pvActive면 섹션 헤더 추가
+    let html = pvActive
+        ? `<div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:#9c27b0;padding:2px 2px 5px;letter-spacing:.1em;">▶ pv+${pvChain.length}수 이후 추천 (우클릭→확장)</div>`
+        : '';
+
+    const itemsToShow = pvActive ? displayCands.slice(0,3) : (
+        regionRect
+            ? (() => {
+                const inR  = displayCands.filter(c=>isInRegion(c.move));
+                const outR = displayCands.filter(c=>!isInRegion(c.move));
+                return [...(inR.length?[{type:'h',label:'● 영역 내'}]:[]),...inR.slice(0,3).map((c,i)=>({type:'c',cand:c,i})),
+                        ...(outR.length?[{type:'h',label:'○ 영역 밖'}]:[]),...outR.slice(0,3).map((c,i)=>({type:'c',cand:c,i}))];
+            })()
+            : displayCands.slice(0,3).map((c,i)=>({type:'c',cand:c,i}))
+    );
+
+    if(pvActive){
+        html += displayCands.slice(0,3).map((c,i)=>{
+            const col=i===0?COLOR_TOP:COLOR_REST;
+            const barW=Math.round(c.visits/maxV*100);
+            const pvTag=c.pv&&c.pv.length>0?`<span style="font-size:.5rem;color:#556;margin-left:3px;">↪${c.pv.length}수</span>`:'';
+            return `<div class="cand-item" data-idx="${i}" data-pvcand="true">
+                <div class="cand-badge" style="background:${col}">${pvChain.length+1+i*0|0}</div>
+                <div class="cand-move">${c.move}${pvTag}</div>
+                <div class="cand-wr">${c.winrate}%</div>
+                <div class="cand-bar-bg"><div class="cand-bar" style="width:${barW}%;background:${col}"></div></div>
+            </div>`;
+        }).join('');
+    } else {
+        // 일반 모드
+        const items = regionRect
+            ? (() => {
+                const inR  = displayCands.filter(c=>isInRegion(c.move)).slice(0,3);
+                const outR = displayCands.filter(c=>!isInRegion(c.move)).slice(0,3);
+                return [...(inR.length?[`<div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);padding:4px 2px 2px;">● 영역 내</div>`]:[]),
+                        ...inR.map((c,i)=>candHTML(c,i,'in',displayCands.indexOf(c))),
+                        ...(outR.length?[`<div style="font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--dim);padding:4px 2px 2px;">○ 영역 밖</div>`]:[]),
+                        ...outR.map((c,i)=>candHTML(c,i,'out',displayCands.indexOf(c)))];
+            })()
+            : displayCands.slice(0,3).map((c,i)=>candHTML(c,i,'normal',i));
+        html += items.join('');
+    }
+
+    list.innerHTML = html;
+
+    // 우클릭 이벤트 (사이드바에서도 pv 트리거)
+    list.querySelectorAll('.cand-item').forEach(el=>{
+        const idx=parseInt(el.dataset.idx);
+        el.addEventListener('contextmenu', e=>{
+            e.preventDefault();
+            const src = pvActive ? pvCandidates : candidates;
+            const cand = src[idx];
+            if(!cand) return;
+            if(!pvActive) startPV(cand);
+            else extendPV(cand);
+            renderCandList(); draw();
+        });
+    });
+}
+
+function candHTML(c, rank, mode, globalIdx){
+    const colorOf=(m,r)=>{
+        if(m==='in')  return r===0?'#00e5ff':'#4dd0e1';
+        if(m==='out') return r===0?'#ff9800':'#ffcc80';
+        return rank===0?COLOR_TOP:COLOR_REST;
+    };
+    const col=colorOf(mode,rank);
+    const maxV=(pvActive?pvCandidates:candidates)[0]?.visits||1;
+    const barW=Math.round(c.visits/maxV*100);
+    const pvTag=c.pv&&c.pv.length>0?`<span style="font-size:.5rem;color:#556;margin-left:3px;">↪${c.pv.length}수</span>`:'';
+    return `<div class="cand-item" data-idx="${globalIdx}">
+        <div class="cand-badge" style="background:${col}">${rank+1}</div>
+        <div class="cand-move">${c.move}${pvTag}</div>
+        <div class="cand-wr">${c.winrate}%</div>
+        <div class="cand-bar-bg"><div class="cand-bar" style="width:${barW}%;background:${col}"></div></div>
+    </div>`;
+}
+
+/* ── 승률 바 ────────────────────────────────────────────────────── */
+function updateWinrateBar(blackWr,scoreLead){
+    document.getElementById('wr-bar-wrap').style.display='block';
+    const bPct=Math.max(2,Math.min(98,blackWr));
+    document.getElementById('wr-black-pct').textContent=blackWr.toFixed(1)+'%';
+    document.getElementById('wr-white-pct').textContent=(100-blackWr).toFixed(1)+'%';
+    document.getElementById('wr-bar-black').style.width=bPct+'%';
+    document.getElementById('wr-bar-white').style.width=(100-bPct)+'%';
+    if(scoreLead!==null){
+        const who=scoreLead>=0?'흑':'백';
+        document.getElementById('wr-score-label').textContent=`집차이: ${who} +${Math.abs(scoreLead).toFixed(1)}`;
+    } else document.getElementById('wr-score-label').textContent='집차이: -';
+}
+
+/* ── 승률 차트 (슬라이딩 윈도우) ────────────────────────────────── */
+function drawWinrateChart(){
+    const cv  = document.getElementById('chart-canvas');
+    const ph  = document.getElementById('chart-ph');
+    const hint= document.getElementById('chart-hint');
+    const n   = wrHistory.length;
+    if(n<1){ ph.style.display='block'; hint.style.display='none'; return; }
+    ph.style.display='none';
+
+    // 슬라이딩 윈도우 계산
+    // chartOffset=0 → 최신 데이터 기준, 드래그 왼쪽 → 과거 탐색
+    const winSize  = Math.min(CHART_WINDOW, n);
+    const maxOffset= Math.max(0, n - winSize);
+    chartOffset    = Math.max(0, Math.min(maxOffset, chartOffset));
+    // 표시할 데이터 슬라이스 (최신=오른쪽)
+    const endIdx   = n - chartOffset;
+    const startIdx = Math.max(0, endIdx - winSize);
+    const slice    = wrHistory.slice(startIdx, endIdx);
+    const sn       = slice.length;
+
+    hint.style.display = n > CHART_WINDOW ? 'block' : 'none';
+
+    // 캔버스 크기
+    const cDPR = devicePixelRatio||1;
+    cv.width   = cv.offsetWidth  * cDPR;
+    cv.height  = cv.offsetHeight * cDPR;
+    const cx   = cv.getContext('2d');
+    cx.scale(cDPR, cDPR);
+    const W=cv.offsetWidth, H=cv.offsetHeight;
+    const ML=24, MR=6, MT=6, MB=6;
+    const gW=W-ML-MR, gH=H-MT-MB;
+
+    cx.clearRect(0,0,W,H);
+    cx.fillStyle='#161a1e'; cx.fillRect(0,0,W,H);
+
+    // 50% 기준선
+    cx.strokeStyle='rgba(255,255,255,0.07)'; cx.lineWidth=1; cx.setLineDash([3,3]);
+    cx.beginPath(); cx.moveTo(ML,MT+gH/2); cx.lineTo(W-MR,MT+gH/2); cx.stroke(); cx.setLineDash([]);
+
+    // y 라벨
+    cx.font='8px JetBrains Mono'; cx.fillStyle='rgba(255,255,255,0.20)';
+    cx.textAlign='left'; cx.textBaseline='middle';
+    cx.fillText('100',2,MT+2); cx.fillText(' 50',2,MT+gH/2); cx.fillText('  0',2,MT+gH-2);
+
+    // 스크롤 위치 표시 (우상단)
+    if(n>CHART_WINDOW){
+        const label=`${startIdx+1}~${endIdx}/${n}`;
+        cx.font='7px JetBrains Mono'; cx.fillStyle='rgba(255,255,255,0.25)';
+        cx.textAlign='right'; cx.textBaseline='top';
+        cx.fillText(label, W-MR, MT);
+    }
+
+    const ptX = i => sn<2 ? ML+gW/2 : ML + i*gW/(sn-1);
+    const ptY = wr => MT + gH - (wr/100)*gH;
+
+    if(sn>=2){
+        // 흑 영역 fill
+        const gB=cx.createLinearGradient(0,MT,0,MT+gH);
+        gB.addColorStop(0,'rgba(100,221,23,0.22)'); gB.addColorStop(1,'rgba(100,221,23,0.01)');
+        cx.beginPath(); cx.moveTo(ptX(0),MT+gH/2);
+        slice.forEach((p,i)=>cx.lineTo(ptX(i),ptY(p.blackWr)));
+        cx.lineTo(ptX(sn-1),MT+gH/2); cx.closePath(); cx.fillStyle=gB; cx.fill();
+
+        // 흑 선
+        cx.beginPath();
+        slice.forEach((p,i)=>i===0?cx.moveTo(ptX(0),ptY(p.blackWr)):cx.lineTo(ptX(i),ptY(p.blackWr)));
+        cx.strokeStyle='#64dd17'; cx.lineWidth=1.8; cx.stroke();
+
+        // 백 선
+        cx.beginPath();
+        slice.forEach((p,i)=>i===0?cx.moveTo(ptX(0),ptY(100-p.blackWr)):cx.lineTo(ptX(i),ptY(100-p.blackWr)));
+        cx.strokeStyle='#ff6e40'; cx.lineWidth=1.2; cx.setLineDash([3,3]); cx.stroke(); cx.setLineDash([]);
+
+        // 영역 내 선 (보라)
+        const hasRegion=slice.some(p=>p.regionWr!=null);
+        if(hasRegion){
+            cx.beginPath(); let first=true;
+            slice.forEach((p,i)=>{ if(p.regionWr==null) return;
+                if(first){cx.moveTo(ptX(i),ptY(p.regionWr));first=false;} else cx.lineTo(ptX(i),ptY(p.regionWr)); });
+            cx.strokeStyle='#9c27b0'; cx.lineWidth=1.5; cx.setLineDash([2,2]); cx.stroke(); cx.setLineDash([]);
+        }
+    }
+
+    // 포인트 + 집차이 라벨
+    slice.forEach((p,i)=>{
+        const x=ptX(i), y=ptY(p.blackWr);
+        cx.beginPath(); cx.arc(x,y,2.5,0,Math.PI*2); cx.fillStyle='#64dd17'; cx.fill();
+        if(p.scoreLead!=null){
+            const lbl=(p.scoreLead>=0?'+':'')+p.scoreLead.toFixed(1);
+            cx.font='7px JetBrains Mono'; cx.textAlign='center';
+            cx.fillStyle='rgba(255,202,40,0.88)';
+            cx.textBaseline=y>MT+12?'bottom':'top';
+            cx.fillText(lbl,x,y>MT+12?y-3:y+3);
+        }
+        if(p.regionWr!=null){
+            cx.beginPath(); cx.arc(ptX(i),ptY(p.regionWr),2.5,0,Math.PI*2);
+            cx.fillStyle='#9c27b0'; cx.fill();
+        }
+    });
+
+    // 마지막 포인트 강조
+    const last=slice[sn-1];
+    cx.beginPath(); cx.arc(ptX(sn-1),ptY(last.blackWr),4,0,Math.PI*2); cx.fillStyle='#64dd17'; cx.fill();
+}
+
+// 차트 드래그 (슬라이딩)
+(()=>{
+    const cv=document.getElementById('chart-canvas');
+    cv.addEventListener('mousedown',e=>{
+        if(wrHistory.length<=CHART_WINDOW) return;
+        chartDrag=true; chartDragStartX=e.clientX; chartDragStartOffset=chartOffset;
+        cv.style.cursor='grabbing';
+    });
+    document.addEventListener('mousemove',e=>{
+        if(!chartDrag) return;
+        const dx    = e.clientX - chartDragStartX;
+        const n     = wrHistory.length;
+        const winSize=Math.min(CHART_WINDOW,n);
+        const pxPerStep = cv.offsetWidth / winSize;
+        // 오른쪽 드래그 → 과거로, 왼쪽 드래그 → 미래로
+        chartOffset = Math.max(0, Math.min(n-winSize, chartDragStartOffset - Math.round(dx/pxPerStep)));
+        drawWinrateChart();
+    });
+    document.addEventListener('mouseup',()=>{
+        if(chartDrag){ chartDrag=false; cv.style.cursor='grab'; }
+    });
+})();
+
+/* ================================================================
+   앱 모드 전환
+================================================================ */
+function setAppMode(mode) {
+    appMode = mode;
+    document.getElementById('game-panel').style.display     = mode === 'game'     ? 'flex' : 'none';
+    document.getElementById('research-panel').style.display = mode === 'research' ? 'flex' : 'none';
+    document.getElementById('tab-game').classList.toggle('active',     mode === 'game');
+    document.getElementById('tab-research').classList.toggle('active', mode === 'research');
+}
+
+/* ================================================================
+   대국 모드
+================================================================ */
+function setHandicap(n) {
+    gameHandicap = n;
+    [0,2,3,4,6,9].forEach(k => {
+        const el = document.getElementById(`hc-${k}`);
+        if(el) el.className = 'stone-opt' + (k===n ? ' auto-active' : '');
+    });
+    const desc = document.getElementById('hc-desc');
+    if(n === 0){ desc.textContent = '접바둑 없음'; }
+    else {
+        desc.textContent = `흑 ${n}점 접바둑 — 덤 자동 0.5집`;
+        // 접바둑 시 덤은 관례상 0.5집으로 자동 설정
+        gameKomi = 0.5;
+        updateKomiUI();
+    }
+}
+
+// 19로 표준 접바둑 배치 좌표 (GTP 좌표)
+const HANDICAP_POSITIONS = {
+    2: ['D4','Q16'],
+    3: ['D4','Q16','Q4'],
+    4: ['D4','Q16','D16','Q4'],
+    5: ['D4','Q16','D16','Q4','K10'],
+    6: ['D4','Q16','D16','Q4','D10','Q10'],
+    7: ['D4','Q16','D16','Q4','D10','Q10','K10'],
+    8: ['D4','Q16','D16','Q4','D10','Q10','K4','K16'],
+    9: ['D4','Q16','D16','Q4','D10','Q10','K4','K16','K10'],
+};
+
+function placeHandicapStones() {
+    if(gameHandicap < 2) return;
+    const positions = HANDICAP_POSITIONS[gameHandicap] || [];
+    positions.forEach(gtp => {
+        const {r, c} = gtpToRC(gtp);
+        if(r < 0 || r >= SIZE || c < 0 || c >= SIZE) return;
+        board[r][c] = 1;  // 흑 돌
+        moveHistory.push({color: 1, r, c});
+        boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color:1,r,c}, koPoint: null});
+    });
+    // 접바둑 후 백 차례
+    turn = 2;
+    updateTurnUI();
+}
+
+function adjustKomi(delta) {
+    gameKomi = Math.round((gameKomi + delta) * 2) / 2;
+    updateKomiUI();
+}
+function resetKomi() {
+    gameKomi = 6.5;
+    updateKomiUI();
+}
+function updateKomiUI() {
+    const el   = document.getElementById('komi-display');
+    const desc = document.getElementById('komi-desc');
+    if(!el) return;
+    el.textContent = gameKomi > 0
+        ? `+${gameKomi}집`
+        : gameKomi === 0 ? '0집 (무덤)'
+        : `${gameKomi}집 (역덤)`;
+    el.style.color = gameKomi < 0 ? 'var(--win-w)' : gameKomi === 0 ? '#aaa' : 'var(--accent)';
+    if(desc){
+        if(gameKomi > 0)       desc.textContent = `백이 흑에게 ${gameKomi}집 지급`;
+        else if(gameKomi === 0) desc.textContent = '덤 없음';
+        else                   desc.textContent = `흑이 백에게 ${Math.abs(gameKomi)}집 지급 (역덤)`;
+    }
+}
+
+function setUndoLimit(n) {
+    undoLimit = n;
+    ['undo-0','undo-3','undo-inf'].forEach(id => document.getElementById(id).className = 'stone-opt');
+    if(n === 0)  document.getElementById('undo-0').className   = 'stone-opt auto-active';
+    if(n === 3)  document.getElementById('undo-3').className   = 'stone-opt auto-active';
+    if(n === -1) document.getElementById('undo-inf').className = 'stone-opt auto-active';
+}
+
+function updateUndoBtn() {
+    const btn  = document.getElementById('game-undo-btn');
+    const wrap = document.getElementById('undo-count-wrap');
+    if(undoLimit === 0){
+        btn.disabled = true; btn.style.opacity = '0.3';
+        if(wrap) wrap.style.display = 'none';
+    } else {
+        const ok = undoLimit === -1 || undoRemain > 0;
+        btn.disabled = !ok; btn.style.opacity = ok ? '1' : '0.3';
+        if(wrap){
+            wrap.style.display = undoLimit > 0 ? 'block' : 'none';
+            wrap.textContent = `남은 무르기: ${undoRemain}회`;
+        }
+    }
+}
+
+function undoMove() {
+    if(!gameActive || aiThinking) return;
+    if(undoLimit === 0) return;
+    if(undoLimit > 0 && undoRemain <= 0) return;
+
+    // 내 수 + AI 응수 2수를 되돌림 (내 수만 남아있으면 1수만)
+    let undone = 0;
+    while(boardHistory.length > 0 && undone < 2){
+        const snap = boardHistory.pop();
+        futureStack = [];
+        moveHistory.pop();
+        board   = snap.board;
+        koPoint = snap.koPoint ?? null;
+        undone++;
+    }
+    turn = moveHistory.length === 0 ? 1
+         : (moveHistory[moveHistory.length-1].color === 1 ? 2 : 1);
+    candidates = []; clearPVKeepOffset();
+
+    if(undoLimit > 0) undoRemain--;
+    updateUndoBtn();
+    updateTurnUI(); draw();
+    setGameStatus(`무르기 완료 — ${turn===1?'흑':'백'} 차례`);
+}
+
+async function requestHint() {
+    if(!gameActive || aiThinking) return;
+    if(turn !== playerColor) return;
+
+    const statusEl = document.getElementById('game-status');
+    statusEl.innerHTML = '<span class="spinner"></span>힌트 계산 중...';
+
+    const gtpMoves = moveHistory.filter(m=>!m.isPass).map(m=>[m.color===1?'B':'W', rcToGTP(m.r,m.c)]);
+
+    try {
+        const res = await fetch(`${SERVER_URL}/analyze`, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ moves: gtpMoves, lz_visits: lzVisits, region_mode: false })
+        });
+        const data = await res.json();
+        const cands = (data.candidates||[]).map(c=>({...c, _turn: turn}));
+        candidates = cands;
+        if(data.ownership && data.ownership.length === SIZE*SIZE){
+            ownershipData = data.ownership;
+            document.getElementById('ownership-btn').style.display = 'block';
+            if(showOwnership) updateOwnershipScore();
+        }
+        setGameStatus(`힌트: ${data.best_move} 추천 — ${turn===1?'흑':'백'} 차례`);
+        renderCandList(); draw();
+    } catch(e) {
+        setGameStatus('⚠ 힌트 오류');
+    }
+}
+
+async function requestScore() {
+    if(!gameActive || aiThinking) return;
+    const btn = document.getElementById('game-score-btn');
+    btn.disabled = true;
+    btn.textContent = '🧮 계산 중...';
+
+    const gtpMoves = moveHistory
+        .filter(m => !m.isPass)
+        .map(m => [m.color===1?'B':'W', rcToGTP(m.r, m.c)]);
+
+    try {
+        const res = await fetch(`${SERVER_URL}/score`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ moves: gtpMoves, komi: gameKomi })
+        });
+        const data = await res.json();
+        if(data.status !== 'success') throw new Error('계가 실패');
+
+        scoreResult = data;
+        showScoreModal(data);
+        setGameStatus('계가 완료 — 동의 여부를 선택하세요');
+    } catch(e) {
+        setGameStatus('⚠ 계가 오류');
+        console.error(e);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🧮 계가 신청';
+    }
+}
+
+function showScoreModal(data) {
+    const wText  = data.winner === 'black' ? '흑' : data.winner === 'white' ? '백' : '무';
+    const wColor = data.winner === 'black' ? '#64dd17' : '#ff6e40';
+
+    document.getElementById('modal-black').textContent    = `${data.black.toFixed(1)}집`;
+    document.getElementById('modal-white').textContent    = `${data.white.toFixed(1)}집`;
+    document.getElementById('modal-komi-note').textContent = `덤 ${data.komi}집 포함`;
+    const resultEl = document.getElementById('modal-result');
+    resultEl.textContent = data.winner === 'draw' ? '무승부' : `${wText} +${data.margin.toFixed(1)}집 승`;
+    resultEl.style.color = wColor;
+    document.getElementById('modal-raw').textContent = `KataGo: ${data.raw}`;
+    document.getElementById('score-modal').style.display = 'flex';
+}
+
+function closeScoreModal() {
+    document.getElementById('score-modal').style.display = 'none';
+}
+
+function confirmScoreModal(agree) {
+    closeScoreModal();
+    if(agree) {
+        // ✓ 동의 → 대국 종료 + 결과 정리
+        const wText = scoreResult.winner === 'black' ? '흑' : '백';
+        const msg   = `${wText} +${scoreResult.margin.toFixed(1)}집 승 (계가)`;
+        endGame(msg);
+        setGameStatus(msg);
+    } else {
+        // ✗ 거부 → 계속 대국
+        scoreResult = null;
+        setGameStatus(`계가 거부 — ${turn===1?'흑':'백'} 차례`);
+    }
+}
+
+function toggleGameChart() {
+    showGameChart = !showGameChart;
+    const btn  = document.getElementById('game-chart-btn');
+    const wrap = document.getElementById('game-chart-wrap');
+    btn.textContent = `📈 승률그래프: ${showGameChart ? 'ON' : 'OFF'}`;
+    btn.classList.toggle('active', showGameChart);
+    wrap.style.display = showGameChart ? 'block' : 'none';
+    if(showGameChart) drawGameChart();
+}
+
+function drawGameChart() {
+    const cv = document.getElementById('game-chart-canvas');
+    if(!cv || wrHistory.length < 1) return;
+    const cDPR = devicePixelRatio || 1;
+    cv.width  = cv.offsetWidth  * cDPR;
+    cv.height = cv.offsetHeight * cDPR;
+    const cx  = cv.getContext('2d');
+    cx.scale(cDPR, cDPR);
+    const W=cv.offsetWidth, H=cv.offsetHeight;
+    const ML=20,MR=4,MT=4,MB=4;
+    const gW=W-ML-MR, gH=H-MT-MB;
+
+    cx.clearRect(0,0,W,H);
+    cx.fillStyle='#161a1e'; cx.fillRect(0,0,W,H);
+    cx.strokeStyle='rgba(255,255,255,0.07)'; cx.lineWidth=1; cx.setLineDash([3,3]);
+    cx.beginPath(); cx.moveTo(ML,MT+gH/2); cx.lineTo(W-MR,MT+gH/2); cx.stroke(); cx.setLineDash([]);
+
+    const n   = wrHistory.length;
+    const ptX = i => n<2 ? ML+gW/2 : ML + i*gW/(n-1);
+    const ptY = wr => MT + gH - (wr/100)*gH;
+
+    if(n >= 2){
+        cx.beginPath();
+        wrHistory.forEach((p,i) => i===0 ? cx.moveTo(ptX(0),ptY(p.blackWr)) : cx.lineTo(ptX(i),ptY(p.blackWr)));
+        cx.strokeStyle='#64dd17'; cx.lineWidth=1.8; cx.stroke();
+    }
+    const last = wrHistory[n-1];
+    cx.beginPath(); cx.arc(ptX(n-1),ptY(last.blackWr),3.5,0,Math.PI*2);
+    cx.fillStyle='#64dd17'; cx.fill();
+}
+
+function setPlayerColor(c) {
+    playerColor = c;
+    document.getElementById('game-pick-black').className = 'stone-opt' + (c===1 ? ' black-active' : '');
+    document.getElementById('game-pick-white').className = 'stone-opt' + (c===2 ? ' white-active' : '');
+}
+
+function setAiLevel(v) {
+    aiLevel = parseInt(v);
+    const labels = {
+        1:'18급', 2:'17급', 3:'16급', 4:'15급', 5:'14급', 6:'13급',
+        7:'12급', 8:'11급', 9:'10급', 10:'9급', 11:'8급', 12:'7급',
+        13:'6급',14:'5급', 15:'4급', 16:'3급', 17:'2급', 18:'1급',
+        19:'1단', 20:'2단', 21:'3단', 22:'4단', 23:'5단',
+        24:'6단', 25:'7단', 26:'8단', 27:'9단'
+    };
+    const visits = {
+        1:5,2:10,3:15,4:20,5:30,6:40,7:55,8:70,9:90,10:120,
+        11:160,12:210,13:270,14:340,15:430,16:550,17:700,18:900,
+        19:1100,20:1400,21:1800,22:2300,23:3000,24:4000,25:5500,26:7000,27:9000
+    };
+    const pda = {
+        1:-3.0,2:-2.8,3:-2.5,4:-2.2,5:-2.0,6:-1.8,
+        7:-1.5,8:-1.2,9:-1.0,10:-0.8,11:-0.6,12:-0.4,13:-0.2
+    };
+    const noiseMap = {1:0.40,2:0.35,3:0.30,4:0.25,5:0.20,6:0.15,7:0.10,8:0.05,9:0.02};
+    const noiseVal = noiseMap[aiLevel] !== undefined ? ` noise:${noiseMap[aiLevel]}` : '';
+    document.getElementById('level-label').textContent = labels[aiLevel] || aiLevel;
+    const pdaVal = pda[aiLevel] !== undefined ? ` pda:${pda[aiLevel]}` : '';
+    document.getElementById('level-desc').textContent  = `v:${visits[aiLevel] || '?'}${pdaVal}${noiseVal}`;
+}
+
+function startGame() {
+    board        = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+    boardHistory = [];
+    moveHistory  = [];
+    futureStack  = [];
+    turn         = 1;
+    koPoint      = null;
+    candidates   = [];
+    wrHistory    = [];
+    clearPV();
+    isResearching  = false;
+    branchSnapshot = null;
+    passCount      = 0;
+    undoRemain     = undoLimit;
+    gameActive     = true;
+    ownershipData  = null;
+    showOwnership  = false;
+    scoreResult    = null;
+
+    document.getElementById('game-start-btn').style.display   = 'none';
+    document.getElementById('game-btns').style.display        = 'flex';
+    document.getElementById('game-review-btn').style.display  = 'none';
+    document.getElementById('game-start-btn2').style.display  = 'none';
+    document.getElementById('ownership-btn').style.display    = 'none';
+    document.getElementById('ownership-score').style.display  = 'none';
+    document.getElementById('game-wr-wrap').style.display     = 'block';
+    updateUndoBtn();
+
+    updateTurnUI(); draw();
+
+    // ★ 접바둑 초기 배치
+    if(gameHandicap >= 2) {
+        placeHandicapStones();
+        draw();
+        setGameStatus(`${gameHandicap}점 접바둑 — 백 차례`);
+        // 접바둑에서 사용자가 백이면 AI(흑)가 이미 돌을 놓음 → 백 차례이므로 사용자 먼저
+        // 사용자가 흑이면 접바둑 돌을 놓은 상태에서 백(AI)이 먼저 응수
+        if(playerColor === 1) requestAIMove();  // 흑(나) = 접바둑 완료 → 백(AI) 차례
+    } else {
+        setGameStatus(`${turn===1?'흑':'백'} 차례 — 대국 시작!`);
+        if(playerColor === 2) requestAIMove();
+    }
+}
+
+function setGameStatus(msg) {
+    document.getElementById('game-status').textContent = msg;
+}
+
+function updateGameWinrate(blackWr, scoreLead, ownership) {
+    document.getElementById('game-wr-wrap').style.display = 'block';
+    const bPct = Math.max(2, Math.min(98, blackWr));
+    document.getElementById('game-wr-black').textContent = blackWr.toFixed(1) + '%';
+    document.getElementById('game-wr-white').textContent = (100 - blackWr).toFixed(1) + '%';
+    document.getElementById('game-bar-black').style.width = bPct + '%';
+    document.getElementById('game-bar-white').style.width = (100 - bPct) + '%';
+    if (scoreLead !== null && scoreLead !== undefined) {
+        const who = scoreLead >= 0 ? '흑' : '백';
+        document.getElementById('game-score-label').textContent = `${who} +${Math.abs(scoreLead).toFixed(1)}집`;
+    }
+    // ownership 데이터 저장
+    if (ownership && ownership.length === SIZE*SIZE) {
+        ownershipData = ownership;
+        document.getElementById('ownership-btn').style.display = 'block';
+        if(showOwnership) draw();
+    }
+}
+
+function toggleOwnership() {
+    showOwnership = !showOwnership;
+    // 대국/연구 모드 버튼 둘 다 동기화
+    ['ownership-btn','ownership-btn-research'].forEach(id => {
+        const btn = document.getElementById(id);
+        if(!btn) return;
+        btn.textContent = `🗺 형세판단: ${showOwnership ? 'ON' : 'OFF'}`;
+        btn.classList.toggle('active', showOwnership);
+    });
+    // 집수 패널 표시/숨김
+    const scoreEl  = document.getElementById('ownership-score');
+    const scoreElR = document.getElementById('ownership-score-research');
+    if(scoreEl)  scoreEl.style.display  = showOwnership ? 'block' : 'none';
+    if(scoreElR) scoreElR.style.display = showOwnership ? 'block' : 'none';
+    if(showOwnership) updateOwnershipScore();
+    draw();
+}
+
+function updateOwnershipScore() {
+    if(!ownershipData || ownershipData.length !== SIZE*SIZE) return;
+
+    const KOMI = 6.5;
+    let blackScore = 0, whiteScore = 0;
+
+    // ownership 합산: +1=흑, -1=백 (0~1 사이 값은 비율로 가중)
+    ownershipData.forEach(v => {
+        if(v > 0) blackScore += v;
+        else      whiteScore += Math.abs(v);
+    });
+
+    // 사석 카운트: board 위 돌들도 ownership에 반영되어 있으나
+    // 현재 판 위 사석(상대 돌로 추정되는 자리)을 추가로 반영
+    // → ownership이 이미 사석 포함 계산이므로 합산값만 사용
+    blackScore = Math.round(blackScore * 10) / 10;
+    whiteScore = Math.round((whiteScore + KOMI) * 10) / 10;
+
+    const diff = Math.round((blackScore - whiteScore) * 10) / 10;
+    const winner = diff > 0 ? `흑 +${diff}` : diff < 0 ? `백 +${Math.abs(diff)}` : '동점';
+
+    // 대국 모드 패널
+    const sb  = document.getElementById('score-black');
+    const sw  = document.getElementById('score-white');
+    const sr  = document.getElementById('score-result');
+    if(sb) sb.textContent = blackScore.toFixed(1);
+    if(sw) sw.textContent = whiteScore.toFixed(1);
+    if(sr) sr.textContent = winner;
+
+    // 연구 모드 패널
+    const sbr = document.getElementById('score-black-r');
+    const swr = document.getElementById('score-white-r');
+    const srr = document.getElementById('score-result-r');
+    if(sbr) sbr.textContent = blackScore.toFixed(1);
+    if(swr) swr.textContent = whiteScore.toFixed(1);
+    if(srr) srr.textContent = winner;
+}
+
+async function requestAIMove() {
+    if (!gameActive || aiThinking) return;
+    aiThinking = true;
+    draw();  // 오버레이 즉시 표시
+    document.getElementById('game-status').innerHTML = '<span class="spinner"></span>AI 생각 중...';
+
+    // ★ PASS(r=-1) 제외하고 실제 착수만 GTP로 변환
+    const gtpMoves = moveHistory
+        .filter(m => !m.isPass)
+        .map(m => [m.color===1?'B':'W', rcToGTP(m.r, m.c)]);
+
+    try {
+        const res = await fetch(`${SERVER_URL}/genmove`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ moves: gtpMoves, level: aiLevel, komi: gameKomi, handicap: gameHandicap })
+        });
+        const data = await res.json();
+
+        if (data.status !== 'success') throw new Error('genmove 실패');
+
+        const aiMove = data.move;
+
+        if (aiMove === 'RESIGN') {
+            aiThinking = false;
+            endGame('AI가 기권했습니다. 당신의 승리!');
+            return;
+        }
+
+        if (aiMove === 'PASS') {
+            passCount++;
+            moveHistory.push({ color: turn, r: -1, c: -1, isPass: true });
+            turn = turn === 1 ? 2 : 1;
+            aiThinking = false;
+            updateTurnUI(); draw();
+            if (passCount >= 2) { endGame('양측 패스 — 대국 종료'); return; }
+            setGameStatus(`AI 패스 — ${turn===playerColor ? '당신' : 'AI'} 차례`);
+        } else {
+            passCount = 0;
+            const {r, c} = gtpToRC(aiMove);
+            // ★ tryPlace로 따내기·패 규칙 적용
+            const result = tryPlace(r, c, turn);
+            if (result) {
+                boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color:turn,r,c}, koPoint});
+                moveHistory.push({color: turn, r, c});
+                board   = result.newBoard;
+                koPoint = result.koPoint;
+            } else {
+                // tryPlace 실패 시 (이론상 없어야 함) 강제 착수
+                boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color:turn,r,c}, koPoint});
+                moveHistory.push({color: turn, r, c});
+                board[r][c] = turn;
+                koPoint = null;
+            }
+            turn = turn === 1 ? 2 : 1;
+            aiThinking = false;
+            updateTurnUI(); draw();
+            setGameStatus(`${turn===1?'흑':'백'} 차례 (${moveHistory.length}수)`);
+        }
+
+        // ★ 승률 + ownership + wrHistory(차트) 업데이트
+        if (data.winrate !== null && data.winrate !== undefined) {
+            updateGameWinrate(data.winrate, data.score_lead_black, data.ownership);
+            if(data.ownership && data.ownership.length === SIZE*SIZE){
+                ownershipData = data.ownership;
+                document.getElementById('ownership-btn').style.display = 'block';
+                if(showOwnership) updateOwnershipScore();
+            }
+            wrHistory.push({
+                moveNum:   moveHistory.filter(m=>!m.isPass).length,
+                blackWr:   data.winrate,
+                scoreLead: data.score_lead_black ?? null,
+                regionWr:  null
+            });
+            chartOffset = 0;
+            updateWinrateBar(data.winrate, data.score_lead_black);
+            drawWinrateChart();
+            if(showGameChart) drawGameChart();
+        }
+
+    } catch(e) {
+        aiThinking = false;
+        draw();  // ★ 오류 시에도 오버레이 제거
+        setGameStatus('⚠ 서버 연결 오류');
+        console.error(e);
+    }
+}
+
+async function passMove() {
+    if (!gameActive || aiThinking) return;
+    if (turn !== playerColor) return;
+
+    passCount++;
+    moveHistory.push({ color: turn, r: -1, c: -1, isPass: true });
+    turn = turn === 1 ? 2 : 1;
+    updateTurnUI(); draw();
+
+    if (passCount >= 2) {
+        endGame('양측 패스 — 대국 종료');
+        return;
+    }
+    setGameStatus(`패스 (${passCount}/2) — AI 생각 중...`);
+    await requestAIMove();
+}
+
+function resignGame() {
+    if (!gameActive) return;
+    gameActive = false;
+    endGame('기권 — AI의 승리');
+}
+
+function endGame(msg) {
+    gameActive = false;
+    aiThinking = false;
+    setGameStatus(msg);
+    document.getElementById('game-btns').style.display       = 'none';
+    document.getElementById('game-review-btn').style.display = 'block';
+    document.getElementById('game-start-btn2').style.display = 'block';
+    draw();
+}
+
+function goToReview() {
+    gameActive = false;
+    document.getElementById('game-btns').style.display = 'none';
+    setAppMode('research');
+    showNumbers = true;
+    document.getElementById('toggle-num').textContent = '수순 표시: ON';
+    document.getElementById('toggle-num').classList.add('active');
+    draw();
+}
+
+/* ================================================================
+   SGF 파서 & 불러오기
+================================================================ */
+
+// ── SGF 토크나이저 ───────────────────────────────────────────────
+function parseSGF(text) {
+    // 결과 객체
+    const result = { meta: {}, moves: [], branches: [] };
+
+    // 프로퍼티 값 추출 (중첩 [] 처리)
+    function extractProps(src) {
+        const props = {};
+        const re = /([A-Z]+)\[([^\]]*)\]/g;
+        let m;
+        while((m = re.exec(src)) !== null) {
+            const key = m[1], val = m[2];
+            if(props[key] === undefined) props[key] = val;
+            else if(Array.isArray(props[key])) props[key].push(val);
+            else props[key] = [props[key], val];
+        }
+        return props;
+    }
+
+    // SGF 좌표 → {r, c}
+    function sgfCoordToRC(coord) {
+        if(!coord || coord === '' || coord === 'tt') return null; // PASS
+        const c = coord.charCodeAt(0) - 97;
+        const r = coord.charCodeAt(1) - 97;
+        if(c < 0 || c >= SIZE || r < 0 || r >= SIZE) return null;
+        return {r, c};
+    }
+
+    // 메인 수순 파싱 (첫 번째 분기만 — 변화도 트리는 추후)
+    // 세미콜론 단위로 노드 분리
+    // 분기 ( ) 는 일단 스킵
+    let depth = 0;
+    let nodeText = '';
+    const nodes = [];
+    for(let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if(ch === '(') {
+            if(depth === 1) nodeText = ''; // 하위 분기 시작 → 버퍼 리셋
+            depth++;
+        } else if(ch === ')') {
+            depth--;
+        } else if(depth === 1) {
+            if(ch === ';') {
+                if(nodeText.trim()) nodes.push(nodeText.trim());
+                nodeText = '';
+            } else {
+                nodeText += ch;
+            }
+        }
+    }
+    if(nodeText.trim()) nodes.push(nodeText.trim());
+
+    // 첫 노드 = 헤더 (메타데이터)
+    if(nodes.length > 0) {
+        const meta = extractProps(nodes[0]);
+        result.meta = {
+            black:  meta.PB || meta.B  || '',
+            white:  meta.PW || meta.W  || '',
+            result: meta.RE || '',
+            komi:   meta.KM ? parseFloat(meta.KM) : null,
+            date:   meta.DT || '',
+            event:  meta.EV || '',
+            round:  meta.RO || '',
+        };
+    }
+
+    // 나머지 노드 = 수순
+    const moves = [];
+    for(let i = 1; i < nodes.length; i++) {
+        const props = extractProps(nodes[i]);
+        let color = null, coord = null;
+        if(props.B !== undefined) { color = 1; coord = props.B; }
+        else if(props.W !== undefined) { color = 2; coord = props.W; }
+        if(color === null) continue;
+
+        const rc = sgfCoordToRC(coord);
+        const comment = props.C || props.c || '';
+        if(rc) {
+            moves.push({color, r: rc.r, c: rc.c, comment, isPass: false});
+        } else {
+            moves.push({color, r: -1, c: -1, comment, isPass: true});
+        }
+    }
+    result.moves = moves;
+    return result;
+}
+
+// ── 기보 불러와서 board에 반영 ─────────────────────────────────
+function loadSGFData(parsed) {
+    // 보드 초기화
+    board        = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+    boardHistory = [];
+    moveHistory  = [];
+    futureStack  = [];
+    turn         = 1;
+    koPoint      = null;
+    candidates   = [];
+    wrHistory    = [];
+    clearPV();
+    isResearching  = false;
+    branchSnapshot = null;
+    document.getElementById('branch-reset-btn').style.display = 'none';
+
+    sgfMoves   = parsed.moves;
+    sgfLoaded  = true;
+    sgfCurrent = 0;
+
+    // 덤 반영
+    if(parsed.meta.komi !== null) {
+        gameKomi = parsed.meta.komi;
+        updateKomiUI();
+    }
+
+    // 슬라이더 설정
+    const slider = document.getElementById('sgf-slider');
+    slider.max   = sgfMoves.length;
+    slider.value = 0;
+    document.getElementById('sgf-move-label').textContent = `0 / ${sgfMoves.length}수`;
+    document.getElementById('sgf-nav-wrap').style.display = 'block';
+
+    // 메타데이터 표시
+    const m = parsed.meta;
+    const setMeta = (id, val, fallback='-') =>
+        document.getElementById(id).textContent = val || fallback;
+
+    setMeta('meta-black',  m.black  + (m.black  ? '' : ''));
+    setMeta('meta-white',  m.white  + (m.white  ? '' : ''));
+    setMeta('meta-result', m.result);
+    setMeta('meta-komi',   m.komi !== null ? `${m.komi}집` : '-');
+    setMeta('meta-date',   m.date);
+    document.getElementById('sgf-meta').style.display = 'block';
+
+    // 수순 표시 ON
+    showNumbers = true;
+    document.getElementById('toggle-num').textContent = '수순 표시: ON';
+    document.getElementById('toggle-num').classList.add('active');
+
+    updateTurnUI(); draw();
+    document.getElementById('ai-status').textContent = `📂 ${sgfMoves.length}수 기보 로드 완료`;
+}
+
+// ── 특정 수까지 이동 ──────────────────────────────────────────
+function seekSGF(targetMove) {
+    if(!sgfLoaded) return;
+
+    // 보드 완전 리셋
+    board        = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+    boardHistory = [];
+    moveHistory  = [];
+    koPoint      = null;
+    turn         = 1;
+    clearPV();
+    candidates   = [];
+
+    // 0~targetMove 수까지 순서대로 재현
+    for(let i = 0; i < targetMove && i < sgfMoves.length; i++) {
+        const m = sgfMoves[i];
+        if(m.isPass) {
+            moveHistory.push({color: m.color, r: -1, c: -1, isPass: true});
+            turn = turn === 1 ? 2 : 1;
+            continue;
+        }
+        const result = tryPlace(m.r, m.c, m.color);
+        if(result) {
+            boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color:m.color, r:m.r, c:m.c}, koPoint});
+            moveHistory.push({color: m.color, r: m.r, c: m.c});
+            board   = result.newBoard;
+            koPoint = result.koPoint;
+        } else {
+            // 규칙 위반 예외 처리 (간혹 비정상 SGF)
+            boardHistory.push({board: JSON.parse(JSON.stringify(board)), move:{color:m.color, r:m.r, c:m.c}, koPoint});
+            moveHistory.push({color: m.color, r: m.r, c: m.c});
+            board[m.r][m.c] = m.color;
+        }
+        turn = m.color === 1 ? 2 : 1;
+    }
+
+    sgfCurrent = targetMove;
+    document.getElementById('sgf-move-label').textContent = `${targetMove} / ${sgfMoves.length}수`;
+    document.getElementById('sgf-slider').value = targetMove;
+
+    // 코멘트 표시
+    const commentEl = document.getElementById('sgf-comment');
+    const comment = targetMove > 0 ? (sgfMoves[targetMove-1]?.comment || '') : '';
+    if(comment) {
+        commentEl.style.display = 'block';
+        commentEl.textContent   = comment;
+    } else {
+        commentEl.style.display = 'none';
+    }
+
+    updateTurnUI(); draw();
+    updateNavButtons();  // ★ 위 수순 패널 카운터 동기화
+    if(realtimeOn) triggerRealtime();
+}
+function handleSGFFile(input) {
+    const file = input.files[0];
+    if(!file) return;
+    readGameFile(file);
+    input.value = '';
+}
+
+function handleSGFDrop(e) {
+    e.preventDefault();
+    document.getElementById('sgf-drop-zone').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    const name = file?.name?.toLowerCase() || '';
+    if(!file || (!name.endsWith('.sgf') && !name.endsWith('.gib'))) {
+        alert('SGF 또는 GIB 파일만 지원합니다.');
+        return;
+    }
+    readGameFile(file);
+}
+
+function readGameFile(file) {
+    const name = file.name.toLowerCase();
+    const isGib = name.endsWith('.gib');
+
+    // GIB는 EUC-KR 인코딩이 많으므로 먼저 EUC-KR 시도
+    const tryRead = (encoding) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(file, encoding);
+    });
+
+    (isGib ? tryRead('EUC-KR').catch(() => tryRead('UTF-8')) : tryRead('UTF-8'))
+        .then(text => {
+            try {
+                const parsed = isGib ? parseGIB(text) : parseSGF(text);
+                if(parsed.moves.length === 0) {
+                    alert('수순을 찾을 수 없습니다. 파일 형식을 확인해 주세요.');
+                    return;
+                }
+                setAppMode('research');
+                loadSGFData(parsed);
+                const dz = document.getElementById('sgf-drop-zone');
+                dz.querySelector('div').textContent = `📄 ${file.name}`;
+            } catch(err) {
+                alert(`파싱 오류: ${err.message}`);
+                console.error(err);
+            }
+        });
+}
+
+function parseGIB(text) {
+    const result = { meta: { black:'', white:'', result:'', komi:null, date:'', event:'' }, moves: [] };
+    const lines = text.split(/\r?\n/);
+
+    // 메타데이터: \[KEY=VALUE\] 형식
+    for(const line of lines) {
+        const m = line.match(/\\\[(\w+)=(.*?)\\\]/);
+        if(!m) continue;
+        const [, key, val] = m;
+        if(key === 'GAMEBLACKNAME') result.meta.black  = val.trim();
+        if(key === 'GAMEWHITENAME') result.meta.white  = val.trim();
+        if(key === 'GAMERESULT')    result.meta.result = val.trim();
+        if(key === 'GAMEDATE')      result.meta.date   = val.trim();
+        if(key === 'GAMENAME')      result.meta.event  = val.trim();
+        // 공제(덤) 처리: GAMEGONGJE=65 → 6.5집
+        if(key === 'GAMEGONGJE')    result.meta.komi   = parseInt(val) / 10;
+    }
+
+    // 착수 파싱: STO 0 수번 색(1=흑 2=백) X Y
+    // 좌표 변환: c=X, r=18-Y (GIB는 좌하단 원점)
+    for(const line of lines) {
+        const m = line.trim().match(/^STO\s+\d+\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/i);
+        if(!m) continue;
+        const color = parseInt(m[2]);  // 1=흑, 2=백
+        const x     = parseInt(m[3]);
+        const y     = parseInt(m[4]);
+        const c = x;
+        const r = 18 - y;
+        // 19,19 = 패스
+        if(x === 19 && y === 19) {
+            result.moves.push({ color, r: -1, c: -1, comment: '', isPass: true });
+        } else if(c >= 0 && c < SIZE && r >= 0 && r < SIZE) {
+            result.moves.push({ color, r, c, comment: '', isPass: false });
+        }
+    }
+
+    return result;
+}
+
+/* ================================================================
+   키보드 단축키
+================================================================ */
+document.addEventListener('keydown', e => {
+    if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if(e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if(sgfLoaded && sgfCurrent > 0) seekSGF(sgfCurrent - 1);
+        else navPrev();
+    } else if(e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        if(sgfLoaded && sgfCurrent < sgfMoves.length) seekSGF(sgfCurrent + 1);
+        else navNext();
+    } else if(e.key === 'Home') {
+        e.preventDefault();
+        sgfLoaded ? seekSGF(0) : navFirst();
+    } else if(e.key === 'End') {
+        e.preventDefault();
+        sgfLoaded ? seekSGF(sgfMoves.length) : navLast();
+    }
+});
+
+updateTurnUI();
+draw();
+</script>
+</body>
+</html>
